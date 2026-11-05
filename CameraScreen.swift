@@ -1,4 +1,6 @@
 import SwiftUI
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 struct CameraScreen: View {
     @Bindable var store: CameraStore

@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreImage
+import CoreImage.CIFilterBuiltins
 import Foundation
 
 enum EngineEvent: Sendable {
