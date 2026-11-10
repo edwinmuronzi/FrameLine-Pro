@@ -13,29 +13,58 @@ struct InteractivePhotoPreview: UIViewRepresentable {
         let view = MTKView(frame: .zero, device: context.coordinator.device)
         view.framebufferOnly = false; view.isPaused = true; view.enableSetNeedsDisplay = true
         view.isOpaque = true; view.backgroundColor = .black; view.delegate = context.coordinator
+        view.contentScaleFactor = min(view.traitCollection.displayScale, 2)
         view.colorPixelFormat = .bgra8Unorm
         (view.layer as? CAMetalLayer)?.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
         return view
     }
     func updateUIView(_ view: MTKView, context: Context) {
-        context.coordinator.source = source; context.coordinator.edit = edit; context.coordinator.depthMask = depthMask
-        view.setNeedsDisplay()
+        context.coordinator.update(source: source, edit: edit, depthMask: depthMask, view: view)
     }
-    final class Renderer: NSObject, MTKViewDelegate {
+    static func dismantleUIView(_ view: MTKView, coordinator: Renderer) {
+        view.delegate = nil
+        coordinator.clear()
+    }
+
+    @MainActor final class Renderer: NSObject, MTKViewDelegate {
         let device = MTLCreateSystemDefaultDevice()
         lazy var commands = device?.makeCommandQueue()
-        lazy var context = device.map { CIContext(mtlDevice: $0, options: [.cacheIntermediates: true]) }
+        lazy var context = device.map { CIContext(mtlDevice: $0, options: [.cacheIntermediates: false]) }
         var source: CIImage?
         var edit = PhotoEdit()
         var depthMask: CIImage?
-        func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { view.setNeedsDisplay() }
+        private var drawing = false
+        private var dirty = true
+
+        func update(source: CIImage, edit: PhotoEdit, depthMask: CIImage?, view: MTKView) {
+            guard self.source !== source || self.edit != edit || self.depthMask !== depthMask else { return }
+            self.source = source
+            self.edit = edit
+            self.depthMask = depthMask
+            invalidate(view)
+        }
+
+        func clear() {
+            source = nil
+            depthMask = nil
+            context?.clearCaches()
+        }
+
+        private func invalidate(_ view: MTKView) {
+            dirty = true
+            if !drawing { view.setNeedsDisplay() }
+        }
+
+        func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { invalidate(view) }
         func draw(in view: MTKView) {
-            guard let source, let drawable = view.currentDrawable, let commands, let command = commands.makeCommandBuffer(), let context else { return }
+            guard dirty, !drawing, let source, let drawable = view.currentDrawable, let commands, let command = commands.makeCommandBuffer(), let context else { return }
             #if DEBUG
             let began = CACurrentMediaTime()
             #endif
             let size = view.drawableSize
             guard size.width > 0, size.height > 0 else { return }
+            drawing = true
+            dirty = false
             var recipe = edit; recipe.useRAW = false
             let image = PhotoDeveloper.adjust(source, edit: recipe, depthMask: depthMask)
             let scale = min(size.width / image.extent.width, size.height / image.extent.height)
@@ -47,6 +76,13 @@ struct InteractivePhotoPreview: UIViewRepresentable {
             #if DEBUG
             command.addCompletedHandler { _ in EditorPreviewProbe.shared.record((CACurrentMediaTime() - began) * 1000) }
             #endif
+            command.addCompletedHandler { [weak self, weak view] _ in
+                DispatchQueue.main.async { [weak self, weak view] in
+                    guard let self, let view else { return }
+                    self.drawing = false
+                    if self.dirty { view.setNeedsDisplay() }
+                }
+            }
             command.present(drawable); command.commit()
         }
     }

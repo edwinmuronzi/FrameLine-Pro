@@ -153,6 +153,10 @@ HEIF Max, RAW, flash, low-light processing and bracketing take longer than ordin
 - Torch control on supported cameras, including during recording.
 - Clean recording controls, clip counters and running timecode.
 
+### Slow shutter — motion blur and light trails
+
+Open **Fn → Shooting tools → Photo capture → Slow shutter**. Choose **Motion blur** to smooth moving water or crowds, or **Light trails** to turn moving lights into streaks. Pick 1, 2, 4 or 8 seconds, steady the phone and tap the shutter. FrameLine blends camera frames into a processed still up to 2048 pixels on the longest edge. Turn Slow shutter off to resume regular still capture.
+
 ### Rangefinder — see beyond the crop
 
 Choose frame lines using the focal-length ruler while keeping the wider scene visible. Anticipate the next subject entering the composition, then save the full image, the framed crop, or both. These are digital framing/crop controls, not a promise of a different physical lens or optical focal length.
@@ -209,7 +213,7 @@ Lens stops, stabilization, torch, RAW, Log, ProRes, manual focus and audio route
 
 ## First launch and everyday use
 
-The fifteen-page introduction showcases photography, video, Dual Shot, live looks, rangefinder composition, manual controls, exposure aids shooting tools, Natural RAW, Live Photo/depth portrait, re-editable originals, viewfinder focus pulls and locked capture. It is skippable and replayable, uses frosted native glass, respects reduced-motion preferences for its transitions, and keeps the live camera off until you enter the camera.
+The fifteen-page introduction showcases photography, video, Dual Shot, live looks, rangefinder composition, manual controls, exposure aids, shooting tools, Natural RAW, Slow Shutter, Live Photo, depth portrait, re-editable originals, viewfinder focus pulls and locked capture. It is skippable and replayable, uses frosted native glass, respects reduced-motion preferences for its transitions, and keeps the live camera off until you enter the camera.
 
 - Tap the bare viewfinder to focus; hold to lock exposure/focus.
 - Drag vertically to adjust exposure.

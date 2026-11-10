@@ -80,19 +80,40 @@ struct PhotoFeaturesView: View {
                 Text("Use the camera’s depth map to soften the background. Your original and depth map stay in the gallery. Open Develop photo to change background blur and subject separation later. Requires depth support; exported images are rendered portraits.").font(.caption)
                 Text("These modes are alternatives. Live and depth availability depends on the current lens and camera configuration.").font(.caption).foregroundStyle(.secondary)
             }
+            Section("Slow shutter") {
+                Picker("Effect", selection: Binding(get: { store.motionExposure }, set: { store.setMotionExposure($0) })) {
+                    ForEach(MotionExposure.allCases) { Text($0.title).tag($0) }
+                }
+                if store.motionExposure != .off {
+                    Picker("Duration", selection: $store.motionExposureSeconds) {
+                        ForEach([1, 2, 4, 8], id: \.self) { Text("\($0) seconds").tag($0) }
+                    }
+                }
+                Text("Motion blur smooths moving water and crowds. Light trails keep bright movements, like car lights at night. Hold the phone still or use a tripod. Saves a still blended from camera frames, up to 2048 pixels on its longest edge.").font(.caption)
+            }
             Section {
                 Button("Standard photo processing") { store.setPhotoFeature(.standard) }
                 Text("For the fastest repeated shots, use standard HEIF with Live Photo, RAW and depth portrait off.").font(.caption)
             }
-        }.navigationTitle("Photo capture").disabled(store.isBusy || store.isRecording)
+        }.navigationTitle("Photo capture").disabled(store.isBusy || store.isRecording || store.motionExposureActive)
     }
 }
 
 extension CameraStore {
     enum PhotoFeature { case standard, natural, live, portrait }
+    func setMotionExposure(_ effect: MotionExposure) {
+        guard !isRecording, pendingPhotoCount == 0, !timelapseRunning else { return }
+        if effect != .off {
+            setPhotoFeature(.standard)
+            selectMode(.photo)
+        }
+        motionExposure = effect
+    }
+
     func setPhotoFeature(_ feature: PhotoFeature) {
         guard !isRecording, pendingPhotoCount == 0 else { showToast("Finish the current capture first."); return }
         if mode == .video { selectMode(.photo) }
+        motionExposure = .off
         naturalPhoto = feature == .natural; livePhoto = feature == .live; depthPortrait = feature == .portrait
         if naturalPhoto { focusPullLensEnabled = true }
         if depthPortrait { rawEnabled = false; focusPullLensEnabled = false }

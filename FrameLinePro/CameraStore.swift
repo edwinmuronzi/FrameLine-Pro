@@ -100,6 +100,9 @@ final class CameraStore {
     var naturalPhoto = false
     var livePhoto = false
     var depthPortrait = false
+    var motionExposure: MotionExposure = .off
+    var motionExposureSeconds = 2
+    var motionExposureActive = false
     var rawEnabled = false
     var flash: FlashChoice = .off {
         didSet {
@@ -603,6 +606,9 @@ final class CameraStore {
 
     // One line that names everything that is switched on.
     var caption: String {
+        if mode == .photo, motionExposure != .off {
+            return "\(motionExposure.title) · \(motionExposureSeconds)s"
+        }
         var parts: [String] = []
 
         switch mode {
@@ -869,6 +875,10 @@ final class CameraStore {
 
         refreshRecordingCodecs()
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--verify-motion-exposure") {
+            selectMode(.photo)
+            engine.verifyMotionExposure()
+        }
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-pipeline") { verifyPhotoPipeline() }
         if ProcessInfo.processInfo.arguments.contains("--verify-single-recording") { verifySingleRecording() }
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-burst") { verifyPhotoBurst() }
@@ -1118,6 +1128,7 @@ final class CameraStore {
     }
 
     func selectMode(_ next: CaptureMode) {
+        guard !motionExposureActive else { return }
         cancelFocusPull()
         mode = next
         if next == .video, flash == .auto { flash = .off }
@@ -1545,6 +1556,13 @@ final class CameraStore {
     }
 
     func fireShutter() {
+        if mode == .photo, motionExposure != .off {
+            guard !motionExposureActive, pendingPhotoCount == 0, !timelapseRunning, bracketTask == nil else { return }
+            if countdown != nil { cancelCountdown(); return }
+            shutterTick += 1
+            if timerSeconds > 0 { startCountdown() } else { takeMotionExposure() }
+            return
+        }
         if mode != .video, livePhoto, (styleParams.isIdentity == false || bakeLUT || saveTarget != .full || aspect != .sensor) {
             showToast("Live Photo keeps the original full frame. Turn off looks and LUT baking, and choose Full / Sensor."); return
         }
@@ -1621,6 +1639,8 @@ final class CameraStore {
 
             if mode == .video {
                 toggleRecording()
+            } else if mode == .photo, motionExposure != .off {
+                takeMotionExposure()
             } else {
                 takePhoto()
             }
@@ -1700,6 +1720,16 @@ final class CameraStore {
         }
     }
 
+    private func takeMotionExposure() {
+        guard caps.hasCamera, !motionExposureActive, pendingPhotoCount == 0 else { return }
+        let id = UUID()
+        stillContexts[id] = makeStillContext(motionDetail: "\(motionExposure.title) · \(motionExposureSeconds)s")
+        pendingPhotoCount = stillContexts.count
+        motionExposureActive = true
+        showToast("Hold steady for \(motionExposureSeconds)s.")
+        engine.captureMotionExposure(id: id, mode: motionExposure, seconds: motionExposureSeconds)
+    }
+
     @discardableResult private func submitPhoto() -> UUID {
         let id = UUID()
         stillContexts[id] = makeStillContext()
@@ -1733,7 +1763,7 @@ final class CameraStore {
                 await AVCaptureDevice.requestAccess(for: .audio)
             }
 
-            guard Task.isCancelled == false else { return }
+            guard !Task.isCancelled, !reviewingCaptures, !isRecording, mode == .video else { return }
 
             // Aspect crop: the same region the frame lines show on the
             // portrait viewfinder. For landscape video the region is turned
@@ -1788,7 +1818,7 @@ final class CameraStore {
     }
 
     func flip() {
-        guard isRecording == false else { return }
+        guard !isRecording, !motionExposureActive else { return }
         isFrontCamera.toggle()
         engine.flip()
     }
@@ -1861,6 +1891,10 @@ final class CameraStore {
             activity.begin()
             finalizationActivity = activity
         }
+        pauseCameraSensors()
+    }
+
+    func pauseCameraSensors() {
         storageTask?.cancel(); storageTask = nil
         motion.stopDeviceMotionUpdates()
         motion.stopAccelerometerUpdates()
@@ -2942,6 +2976,7 @@ final class CameraStore {
 
         case .recording(let active):
             isRecording = active
+            if !active, reviewingCaptures { engine.stop() }
 
             if active {
                 clipNumber += 1
@@ -2982,6 +3017,7 @@ final class CameraStore {
             }
 
         case .photo(let id, let processed, let raw, let companion):
+            if motionExposureActive { motionExposureActive = false }
             guard let processed else {
                 stillContexts[id] = nil
                 pendingPhotoCount = stillContexts.count
@@ -3172,13 +3208,13 @@ final class CameraStore {
         )
     }
 
-    private func makeStillContext() -> StillContext {
+    private func makeStillContext(motionDetail: String? = nil) -> StillContext {
         let scale: CGFloat = mode == .rangefinder ? CGFloat(min(1, 24 * lensZoom / Double(focal.value))) : 1
         let lut = bakeLUT ? selectedLUT : nil
         let cube = lut.flatMap { LUTMonitor.cubeData(from: $0.data, size: Int($0.size)) }
         return StillContext(request: StillComposer.Request(focalScale: scale, aspectRatio: aspect.ratio,
             saveTarget: saveTarget.rawValue, style: styleParams, cube: cube, cubeSize: cube == nil ? 0 : (lut?.size ?? 0),
-            lutIntensity: lutIntensity), detail: caption, saves: saveToPhotos, mode: mode, natural: naturalPhoto, live: livePhoto, portrait: depthPortrait)
+            lutIntensity: lutIntensity), detail: motionDetail ?? caption, saves: saveToPhotos, mode: mode, natural: motionDetail == nil && naturalPhoto, live: motionDetail == nil && livePhoto, portrait: motionDetail == nil && depthPortrait)
     }
 
     private func storeStill(fullData: Data, raw: Data?, simulated: Bool, id: UUID = UUID(), companion: PhotoCompanion = PhotoCompanion()) {

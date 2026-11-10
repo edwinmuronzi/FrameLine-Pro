@@ -561,7 +561,12 @@ nonisolated final class CaptureEngine: NSObject,
     func stop(releaseRenderCaches: Bool = true) {
         queue.async { [weak self] in
             guard let self else { return }
+            if self.previewSuppressed, self.movieOutput.isRecording || self.storiesOutput.isRecording
+                || self.currentLiveWriter() != nil || self.currentWriter() != nil || self.currentTimelapse() != nil { return }
             self.sessionWanted = false
+            if let id = self.motionExposureID {
+                self.analysisQueue.async { [weak self] in self?.finishMotionExposure(id: id, cancelled: true) }
+            }
             if !self.photoDelegates.isEmpty { self.stopAfterPhotos = true; return }
             self.liveTimer?.cancel(); self.liveTimer = nil
             if self.session.isRunning { self.session.stopRunning() }
@@ -1341,6 +1346,80 @@ nonisolated final class CaptureEngine: NSObject,
     }
 
     // MARK: - Photo Capture
+
+    // The session queue owns the capture ID; the analysis queue owns the frames.
+    private var motionExposureID: UUID?
+    private var motionAccumulator: MotionExposureAccumulator?
+
+    func captureMotionExposure(id: UUID, mode: MotionExposure, seconds: Int) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            guard self.session.isRunning, self.motionExposureID == nil, !self.movieOutput.isRecording,
+                  self.currentLiveWriter() == nil else {
+                self.emit(.photo(id: id, processed: nil, raw: nil))
+                return
+            }
+            self.motionExposureID = id
+            self.syncAnalysisOutput()
+            guard self.session.outputs.contains(self.analysisOutput) else {
+                self.motionExposureID = nil
+                self.emit(.photo(id: id, processed: nil, raw: nil))
+                return
+            }
+            let angle = self.captureAngle()
+            let orientation: CGImagePropertyOrientation = angle == 0 ? .left : angle == 180 ? .right : angle == 270 ? .down : .up
+            let mirrored = self.position == .front
+            self.analysisQueue.async { [weak self] in
+                guard let self else { return }
+                self.motionAccumulator = MotionExposureAccumulator(id: id, mode: mode, orientation: orientation)
+                self.analysisQueue.asyncAfter(deadline: .now() + .seconds(seconds)) { [weak self] in
+                    self?.finishMotionExposure(id: id, cancelled: false)
+                }
+                self.mirrorMotionExposure = mirrored
+            }
+        }
+    }
+
+    private var mirrorMotionExposure = false
+
+    private func finishMotionExposure(id: UUID, cancelled: Bool) {
+        guard let accumulator = motionAccumulator, accumulator.id == id else { return }
+        motionAccumulator = nil
+        let data = cancelled ? nil : accumulator.finish(context: PhotoDeveloper.context)
+        queue.async { [weak self] in
+            guard let self, self.motionExposureID == id else { return }
+            self.motionExposureID = nil
+            self.syncAnalysisOutput()
+            #if DEBUG
+            if self.motionVerificationIDs.remove(id) != nil {
+                let size = data.flatMap { CIImage(data: $0)?.extent.size }
+                NSLog("MOTION_EXPOSURE_VERIFY %@ size=%@", size == nil ? "FAIL" : "PASS", String(describing: size))
+                return
+            }
+            #endif
+            self.emit(.photo(id: id, processed: data, raw: nil))
+        }
+    }
+
+    #if DEBUG
+    private var motionVerificationIDs: Set<UUID> = []
+    func verifyMotionExposure() {
+        queue.asyncAfter(deadline: .now() + .seconds(3)) { [weak self] in
+            guard let self, self.session.isRunning else {
+                NSLog("MOTION_EXPOSURE_VERIFY FAIL camera unavailable")
+                return
+            }
+            for (index, effect) in [MotionExposure.blur, .trails].enumerated() {
+                self.queue.asyncAfter(deadline: .now() + .seconds(index * 3)) { [weak self] in
+                    guard let self else { return }
+                    let id = UUID()
+                    self.motionVerificationIDs.insert(id)
+                    self.captureMotionExposure(id: id, mode: effect, seconds: 1)
+                }
+            }
+        }
+    }
+    #endif
 
     func capturePhoto(raw: Bool, flash: FlashChoice, format: PhotoFormat, id: UUID = UUID(), nativeRaw: Bool = false) {
         queue.async { [weak self] in
@@ -3799,7 +3878,7 @@ nonisolated final class CaptureEngine: NSObject,
 
     // Call inside a configuration block.
     private func addAnalysisOutput(force: Bool = false) {
-        guard force || aidsWanted,
+        guard force || aidsWanted || motionExposureID != nil,
               dualActive == false,
               session.outputs.contains(analysisOutput) == false else {
             return
@@ -3828,7 +3907,7 @@ nonisolated final class CaptureEngine: NSObject,
             return
         }
 
-        let wanted = aidsWanted
+        let wanted = aidsWanted || motionExposureID != nil
         let attached = session.outputs.contains(analysisOutput)
         guard wanted != attached else { return }
 
@@ -3929,6 +4008,13 @@ nonisolated final class CaptureEngine: NSObject,
             }
             writerLock.unlock()
             if ready { renderAnalysisRecording(sampleBuffer, writer: writer) }
+        }
+        if let motionAccumulator {
+            autoreleasepool {
+                let image = CIImage(cvPixelBuffer: buffer)
+                motionAccumulator.offer(mirrorMotionExposure ? image.oriented(.upMirrored) : image,
+                    timestamp: CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds, context: PhotoDeveloper.context)
+            }
         }
         validateAnalysisFrame(buffer)
         guard !previewSuppressed else { return }
@@ -4544,7 +4630,14 @@ nonisolated final class CaptureEngine: NSObject,
             let soak = ProcessInfo.processInfo.arguments.contains("--verify-efficiency")
             let interrupt = ProcessInfo.processInfo.arguments.contains("--verify-interruption")
             let duration = ProcessInfo.processInfo.arguments.contains("--long-soak") ? 180.0 : soak ? 60.0 : (ProcessInfo.processInfo.arguments.contains("--verify-throughput") ? 10.0 : 2.0)
-            if soak { NSLog("EFFICIENCY_VERIFY starting %.0fs, thermal=%ld", duration, ProcessInfo.processInfo.thermalState.rawValue) }
+            if soak {
+                let thermal = ProcessInfo.processInfo.thermalState
+                NSLog("EFFICIENCY_VERIFY starting %.0fs, thermal=%ld", duration, thermal.rawValue)
+                guard thermal != .serious, thermal != .critical else {
+                    NSLog("EFFICIENCY_VERIFY deferred because the device is already hot")
+                    return
+                }
+            }
             self.monitorLock.lock()
             let now = ProcessInfo.processInfo.systemUptime
             self.previewProbeMeters = [PreviewProbeMeter(last: now), PreviewProbeMeter(last: now)]
@@ -4657,20 +4750,19 @@ nonisolated final class CaptureEngine: NSObject,
     #endif
 
     private func enqueuePreview(_ source: CMSampleBuffer, on layer: AVSampleBufferDisplayLayer) {
+        let renderer = layer.sampleBufferRenderer
+        if renderer.status == .failed { renderer.flush() }
+        guard renderer.isReadyForMoreMediaData else { return }
         var copy: CMSampleBuffer?
         CMSampleBufferCreateCopy(allocator: nil, sampleBuffer: source, sampleBufferOut: &copy)
-        let sample = copy ?? source
+        guard let sample = copy else { return }
         if let entries = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true) as? [NSMutableDictionary] {
             entries.first?[kCMSampleAttachmentKey_DisplayImmediately] = true
         }
-        let renderer = layer.sampleBufferRenderer
-        if renderer.status == .failed { renderer.flush() }
-        if renderer.isReadyForMoreMediaData {
-            renderer.enqueue(sample)
-            #if DEBUG
-            noteProbeFrame(on: layer)
-            #endif
-        }
+        renderer.enqueue(sample)
+        #if DEBUG
+        noteProbeFrame(on: layer)
+        #endif
     }
 
     func setDualPreview(_ enabled: Bool) {
@@ -5497,7 +5589,7 @@ nonisolated final class CaptureEngine: NSObject,
             let graded = StyleGrade.grade(corrected, cube: useCube ? cube : nil, cubeSize: dimension,
                                           intensity: intensity, style: style ?? .identity)
                 .cropped(to: corrected.extent)
-            if dualPreview { renderDualUpright(graded) }
+            if dualPreview { renderDualUpright(graded, resolveStyle: useCube || !(style ?? .identity).isIdentity) }
             else {
                 renderPreview(graded, size: ReelGeometry.previewSize(for: graded.extent), pool: &anamorphicPreviewPool, layer: monitorLayer)
                 monitorLock.lock(); lastMonitorEnqueue = CFAbsoluteTimeGetCurrent(); monitorLock.unlock()
@@ -5647,7 +5739,7 @@ nonisolated final class CaptureEngine: NSObject,
         }
     }
 
-    private func renderDualPreview(_ portrait: CIImage, resolveStyle: Bool = true) {
+    private func renderDualPreview(_ portrait: CIImage, resolveStyle: Bool) {
         // The analysis connection is fixed at 90 degrees, including after
         // lifecycle and format changes. Device angle must not rotate it again.
         let image = portrait.transformed(by: framingSnapshot().transform)

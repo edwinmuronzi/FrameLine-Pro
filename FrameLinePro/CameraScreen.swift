@@ -41,6 +41,7 @@ struct CameraScreen: View {
 
             toastView
         }
+        .disabled(store.motionExposureActive)
         .animation(.snappy(duration: 0.28), value: store.chipPanel)
         .onChange(of: store.countdown) { _, _ in
             Haptics.tick()
@@ -63,8 +64,11 @@ struct CameraScreen: View {
             }
 
             if phase == .active {
-                store.resumeForegroundWork()
-                if !store.reviewingCaptures { store.engine.start(); store.refreshRecordingCodecs() }
+                if !store.reviewingCaptures {
+                    store.resumeForegroundWork()
+                    store.engine.start()
+                    store.refreshRecordingCodecs()
+                }
             } else if phase == .background {
                 store.suspendBackgroundWork()
                 if !store.isRecording { store.engine.stop() }
@@ -83,13 +87,12 @@ struct CameraScreen: View {
             store.engine.setGalleryVisible(false)
             // onDismiss belongs to the sheet itself, not a page inside its
             // NavigationStack. Always restore the desired camera state.
-            if !store.isShowcase, scenePhase != .background { store.engine.start() }
+            if !store.isShowcase, scenePhase == .active {
+                store.resumeForegroundWork()
+                store.engine.start()
+            }
         }) {
             GallerySheet(store: store)
-                .onAppear {
-                    store.reviewingCaptures = true
-                    store.engine.setGalleryVisible(true)
-                }
         }
         .sheet(isPresented: $showSettings) {
             SettingsSheet(store: store)
@@ -141,19 +144,29 @@ struct CameraScreen: View {
             GalleryVerification.requestedAt = ProcessInfo.processInfo.systemUptime
             openGallery()
             try? await Task.sleep(for: .milliseconds(iteration % 2 == 0 ? 180 : 1200))
+            let paused = await !store.engine.galleryResumeProbe().0
             showGallery = false
             try? await Task.sleep(for: .milliseconds(1100))
             let probe = await store.engine.galleryResumeProbe()
-            let okay = probe.0 && probe.1 < 0.7 && !store.reviewingCaptures && GalleryVerification.previewMounts == mounts
+            let okay = paused && probe.0 && probe.1 < 0.7 && !store.reviewingCaptures && GalleryVerification.previewMounts == mounts
             passed = passed && okay
-            NSLog("GALLERY_TRANSITION_VERIFY iteration=%ld %@ mode=%@ running=%d frameAgeMs=%.0f mounts=%ld", iteration, okay ? "PASS" : "FAIL", store.mode.rawValue, probe.0 ? 1 : 0, probe.1 * 1000, GalleryVerification.previewMounts)
+            NSLog("GALLERY_TRANSITION_VERIFY iteration=%ld %@ mode=%@ paused=%d running=%d frameAgeMs=%.0f mounts=%ld", iteration, okay ? "PASS" : "FAIL", store.mode.rawValue, paused ? 1 : 0, probe.0 ? 1 : 0, probe.1 * 1000, GalleryVerification.previewMounts)
         }
         NSLog("GALLERY_TRANSITION_VERIFY %@ items=%ld presentations=%ld maxPresentMs=%.0f maxMainGapMs=%.0f", passed && GalleryVerification.longestMainGap < 0.25 ? "PASS" : "FAIL", store.captures.count, GalleryVerification.presentations, GalleryVerification.longestPresentation * 1000, GalleryVerification.longestMainGap * 1000)
         await GalleryVerification.verifyDeletion()
     }
     #endif
 
-    private func openGallery() { showGallery = true }
+    private func openGallery() {
+        guard !showGallery, !store.isRecording, !store.motionExposureActive else { return }
+        store.reviewingCaptures = true
+        store.engine.setGalleryVisible(true)
+        if !store.isShowcase {
+            store.pauseCameraSensors()
+            store.engine.stop()
+        }
+        showGallery = true
+    }
 
     private var controlsStack: some View {
         VStack(spacing: 6) {
@@ -199,7 +212,7 @@ struct CameraScreen: View {
                         Image(uiImage: store.showcaseImage ?? UIImage(named: scene) ?? UIImage())
                             .resizable().scaledToFill()
                     } else if store.caps.hasCamera {
-                        CameraPreview(session: store.engine.session, angle: 90)
+                        CameraPreview(session: store.engine.session, angle: 90, enabled: !(store.mode == .video && store.dualShot && store.monitorShown))
                     } else {
                         DemoHarborScene()
                             .modifier(DemoStyle(style: store.styleParams))
@@ -462,6 +475,12 @@ struct CameraScreen: View {
                     }
                 }
 
+                if store.motionExposureActive {
+                    Label("Hold steady", systemImage: "timer")
+                        .font(.headline).padding(12)
+                        .background(.black.opacity(0.72), in: Capsule())
+                        .allowsHitTesting(false)
+                }
                 if let remaining = store.countdown {
                     Text("\(remaining)")
                         .font(.system(size: 110, weight: .thin))
@@ -983,6 +1002,7 @@ private struct DualShotFrameOverlay: View {
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
     var angle: Double = 90
+    var enabled = true
 
     func makeUIView(context: Context) -> PreviewSurface {
         let view = PreviewSurface()
@@ -993,6 +1013,7 @@ struct CameraPreview: UIViewRepresentable {
         view.previewLayer.videoGravity = .resizeAspectFill
         view.setAngle(angle)
         view.syncMirroring()
+        view.previewLayer.connection?.isEnabled = enabled
 
         return view
     }
@@ -1007,6 +1028,9 @@ struct CameraPreview: UIViewRepresentable {
 
         uiView.setAngle(angle)
         uiView.syncMirroring()
+        if let connection = uiView.previewLayer.connection, connection.isEnabled != enabled {
+            connection.isEnabled = enabled
+        }
     }
 }
 

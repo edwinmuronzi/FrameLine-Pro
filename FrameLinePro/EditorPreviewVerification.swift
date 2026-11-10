@@ -36,6 +36,7 @@ struct EditorPreviewVerification: View {
             _ = await Task.detached(priority: .userInitiated) { HDRPhotoVerification.run() }.value
             EditorPreviewProbe.shared.reset()
             for index in 0..<120 {
+                edit.colorMix = [.red: PhotoColorAdjustment(hue: sin(Double(index) / 12) * 20)]
                 edit.exposure = sin(Double(index) / 12)
                 edit.saturation = 0.7 + Double(index % 25) / 50
                 edit.crop = .portrait; edit.straighten = sin(Double(index) / 20) * 5
@@ -44,6 +45,9 @@ struct EditorPreviewVerification: View {
             try? await Task.sleep(for: .seconds(1))
             let (frames, p95) = EditorPreviewProbe.shared.summary()
             NSLog("EDITOR_PREVIEW_VERIFY %@ requests=120 frames=%ld p95RenderMs=%.1f", frames >= 60 && p95 < 100 ? "PASS" : "FAIL", frames, p95)
+            try? await Task.sleep(for: .seconds(5))
+            let idleFrames = EditorPreviewProbe.shared.summary().0 - frames
+            NSLog("EDITOR_IDLE_VERIFY %@ idleFrames=%ld thermal=%ld", idleFrames == 0 ? "PASS" : "FAIL", idleFrames, ProcessInfo.processInfo.thermalState.rawValue)
         }
     }
 }
