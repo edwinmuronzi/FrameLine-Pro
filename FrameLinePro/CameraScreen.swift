@@ -369,7 +369,7 @@ struct CameraScreen: View {
                                 }
                                 .buttonStyle(UprightStyle())
                                 .padding(.trailing, 6)
-                                .padding(.bottom, 12 + bottomReserve)
+                                .padding(.bottom, bottomReserve - (store.showManual ? 10 : -12))
                             }
 
 

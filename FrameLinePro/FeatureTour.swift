@@ -149,16 +149,18 @@ struct FeatureTour: View {
             VStack(spacing: 17) {
                 let previewHeight = min(320, size.height * 0.38)
                 Group {
-                    if story.id != 4, let cached = UIImage(named: String(format: "Screen%02d", story.id + 1)) {
+                    if story.id == 9 {
+                        FeatureSummary(active: page == 9)
+                    } else if story.id != 4, let cached = UIImage(named: String(format: "Screen%02d", story.id + 1)) {
                         Image(uiImage: cached).resizable().scaledToFit()
                     } else {
                         CameraShowcase(story: story, previewImage: story.id == 4 ? lookedImage : nil,
                             previewLook: story.id == 4 ? FilmLook.lineup[min(look, FilmLook.lineup.count - 1)] : nil)
                     }
                 }
-                    .frame(width: 394, height: 852)
+                    .frame(width: story.id == 9 ? 820 : 394, height: 852)
                     .scaleEffect(previewHeight / 852)
-                    .frame(width: 394 * previewHeight / 852, height: previewHeight)
+                    .frame(width: (story.id == 9 ? 820 : 394) * previewHeight / 852, height: previewHeight)
                     .clipShape(RoundedRectangle(cornerRadius: 27))
                     .overlay(RoundedRectangle(cornerRadius: 27).stroke(.white.opacity(0.28), lineWidth: 1))
                     .shadow(color: .black.opacity(0.45), radius: 24, y: 12)
@@ -211,4 +213,56 @@ struct FeatureTour: View {
 
 private nonisolated enum TourLookRenderer {
     static let context = CIContext(options: [.cacheIntermediates: false])
+}
+
+// The tour alone owns this animation; it stops off-page and with Reduce Motion.
+private struct FeatureSummary: View {
+    let active: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let tiles: [(String, String)] = [
+        ("camera", "HEIF · JPEG · RAW"), ("video", "Cinematic video"),
+        ("rectangle.on.rectangle", "Dual Shot"), ("viewfinder", "Rangefinder"),
+        ("camera.filters", "Looks & LUTs"), ("slider.horizontal.3", "Manual controls"),
+        ("waveform.path", "RGB scopes"), ("square.stack.3d.up", "Shooting presets"),
+        ("viewfinder.circle", "Focus tools"), ("mic", "Audio monitoring"),
+        ("timer", "Timers & timelapse"), ("lock.shield", "On-device processing")
+    ]
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 24, paused: !active || reduceMotion)) { timeline in
+            let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 42) / 42
+            ZStack {
+                Color.black
+                HStack(alignment: .top, spacing: 18) {
+                    ForEach(0..<3) { column in
+                        VStack(spacing: 18) {
+                            ForEach(0..<12) { row in
+                                let tile = tiles[(row % 4) * 3 + column]
+                                VStack(spacing: 18) {
+                                    Image(systemName: tile.0).font(.system(size: 43, weight: .light)).foregroundStyle(Theme.gold.opacity(0.8))
+                                    Text(tile.1).font(.system(size: 22, weight: .semibold)).multilineTextAlignment(.center)
+                                }
+                                .frame(width: 240, height: 190)
+                                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 30))
+                                .overlay(RoundedRectangle(cornerRadius: 30).stroke(.white.opacity(0.12)))
+                            }
+                        }
+                        .offset(y: -CGFloat(phase) * 832 - (column == 1 ? 100 : 0))
+                    }
+                }.opacity(0.65)
+                LinearGradient(colors: [.black.opacity(0.7), .clear, .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
+                VStack(spacing: 24) {
+                    Image("BrandIcon").resizable().scaledToFit().frame(width: 170, height: 170)
+                        .clipShape(RoundedRectangle(cornerRadius: 39))
+                        .overlay(RoundedRectangle(cornerRadius: 39).stroke(.white.opacity(0.35)))
+                        .shadow(color: .black.opacity(0.6), radius: 25, y: 12)
+                    Text("FrameLine Pro").font(.system(size: 46, weight: .bold)).tracking(-1.5)
+                    Text("PHOTO  ·  VIDEO  ·  RANGEFINDER").font(.system(size: 14, weight: .bold, design: .monospaced)).tracking(2).foregroundStyle(Theme.gold)
+                }
+                .padding(42)
+                .glassEffect(.regular.tint(.black.opacity(0.5)), in: RoundedRectangle(cornerRadius: 48))
+            }.clipped()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("FrameLine Pro. Photo, video, rangefinder, Dual Shot, looks, LUTs, manual controls and shooting tools.")
+    }
 }
