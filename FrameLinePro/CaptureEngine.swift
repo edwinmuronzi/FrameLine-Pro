@@ -1050,11 +1050,21 @@ nonisolated final class CaptureEngine: NSObject,
 
     // MARK: - White Balance
 
-    func setWhiteBalance(locked: Bool, temperature: Float) {
+    func setWhiteBalance(locked: Bool, temperature: Float, holdCurrent: Bool = false) {
         queue.async { [weak self] in
             guard let self, let device = self.videoDevice else { return }
 
             self.lock(device) {
+                if locked, holdCurrent {
+                    // Freezing AWB is supported independently of assigning
+                    // custom Kelvin gains, notably on virtual multi-cameras.
+                    guard device.isWhiteBalanceModeSupported(.locked) else { return }
+                    device.setWhiteBalanceModeLocked(with: AVCaptureDevice.currentWhiteBalanceGains)
+                    #if DEBUG
+                    NSLog("WB_HOLD_VERIFY locked=%d customGains=%d", device.whiteBalanceMode == .locked ? 1 : 0, device.isLockingWhiteBalanceWithCustomDeviceGainsSupported ? 1 : 0)
+                    #endif
+                    return
+                }
                 if locked {
                     guard device.isWhiteBalanceModeSupported(.locked),
                           device.isLockingWhiteBalanceWithCustomDeviceGainsSupported else {

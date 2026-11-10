@@ -1493,6 +1493,8 @@ final class CameraStore {
     }
 
     func updateWhiteBalance() {
+        // An explicit user adjustment replaces an automatic recording hold.
+        wbLockedByRecording = false
         engine.setWhiteBalance(
             locked: lockWhiteBalance,
             temperature: whiteBalance
@@ -2059,7 +2061,9 @@ final class CameraStore {
         }
 
         if lockWhiteBalance {
-            updateWhiteBalance()
+            if wbLockedByRecording {
+                engine.setWhiteBalance(locked: true, temperature: whiteBalance, holdCurrent: true)
+            } else { updateWhiteBalance() }
         }
 
         if focusAuto == false {
@@ -2717,7 +2721,7 @@ final class CameraStore {
             log: logProfile.rawValue, dual: dualShot, width: recSettings.resolution?.width, height: recSettings.resolution?.height,
             fps: recSettings.frameRate, bitrate: recSettings.bitrate.rawValue, codec: selectedCodec?.rawValue,
             iso: iso, shutter: shutter, isoAuto: isoAuto, shutterAuto: shutterAuto, angleLocked: shutterAngleLock, shutterAngle: shutterAngle,
-            whiteBalance: whiteBalance, whiteBalanceLocked: lockWhiteBalance, focus: lensPosition, focusAuto: focusAuto,
+            whiteBalance: whiteBalance, whiteBalanceLocked: lockWhiteBalance && !wbLockedByRecording, focus: lensPosition, focusAuto: focusAuto,
             lens: lensZoom, zoom: zoomLog, stabilization: stabilization.rawValue,
             lookID: look.id, quality: currentDials.quality, tone: currentDials.tone, lookOptions: lookOptions,
             lutName: selectedLUT?.name, lutPreview: monitorLUT, lutBake: bakeLUT, lutIntensity: lutIntensity,
@@ -2910,11 +2914,11 @@ final class CameraStore {
                 recordingStarted = Date()
 
                 // Hold white balance so it can't drift during the take.
-                if lockWBOnRecord, lockWhiteBalance == false {
+                if lockWBOnRecord || ProcessInfo.processInfo.arguments.contains("--verify-wb-hold"), lockWhiteBalance == false {
                     whiteBalance = liveKelvin
                     lockWhiteBalance = true
                     wbLockedByRecording = true
-                    updateWhiteBalance()
+                    engine.setWhiteBalance(locked: true, temperature: whiteBalance, holdCurrent: true)
                 }
             } else {
                 closeClip()

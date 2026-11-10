@@ -78,3 +78,9 @@ Remaining: controlled energy profiling, longer loaded scopes/loupe runs, repeate
 - Sustained 30 fps without quality reduction remains unresolved. No performance/energy improvement is claimed from rejected experiments. Loaded scopes/loupe, oldest supported hardware, visual physical rotation/background/foreground, grid on/off across force-quits, and controlled energy measurements remain hands-on checks.
 
 - Final two-frame/no-intermediate-cache build: twelve gallery cycles passed with four existing items, maximum presentation callback 50 ms and heartbeat gap 81 ms. Temporary deletion/rollback checks passed in 0.09 seconds. Production 1.2.5 archive succeeded and code-signature verification passed.
+
+## 1.2.6 — recording white-balance hold (11 November 2026)
+
+Lock WB on Record previously converted the current automatic temperature to custom gains. The virtual camera supports locking current gains but reports no custom-gain support, so the app emitted the unsupported-custom-WB toast on each recording. Automatic recording holds now use AVCaptureDevice.currentWhiteBalanceGains, separately from explicit manual Kelvin changes. Explicit user changes supersede the temporary hold; camera-control reapplication preserves its current-gain semantics. Last-session/preset serialization excludes the temporary recording lock.
+
+Connected phone: four consecutive styled Dual Shot starts (four angle states) reported locked=1 and customGains=0. All eight files read completely, both previews received frames and camera configuration recovery passed. Manual custom Kelvin requests retain the capability guard; this fix does not add unsupported hardware gain control.
