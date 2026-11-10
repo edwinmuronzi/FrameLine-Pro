@@ -77,7 +77,7 @@ nonisolated final class ReelTrackingState: @unchecked Sendable {
     var current: CGPoint { lock.lock(); defer { lock.unlock() }; return center }
 }
 
-nonisolated struct ShootingPreset: Codable, Identifiable, Equatable {
+nonisolated struct ShootingPreset: Codable, Identifiable, Equatable, Sendable {
     var id = UUID()
     var name: String
     var mode: String; var format: String; var saveTarget: String; var aspect: String

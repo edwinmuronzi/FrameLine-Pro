@@ -82,7 +82,7 @@ New depth captures retain a lossless floating-point depth mask beside the origin
 
 ### Select and delete gallery items
 
-Tap **Select** in Gallery, tap the photos/videos you want, then **Delete (count)**. **Select all / Deselect all** helps with larger batches. Tap **Done** to return to browsing, or **Close** to resume the camera.
+Tap **Select** in Gallery and choose your photos and videos. Use **Share** to send the selection together, including both videos from a Dual Shot take, or **Delete (count)** to remove the selection. **Select all / Deselect all** helps with larger batches. Tap **Done** to return to browsing, or **Close** to resume the camera.
 
 **Delete all** clears the app gallery after confirmation. These actions remove the app’s originals, edits, RAW files, depth masks and video companions for the selected items. Copies already saved in Apple Photos remain there. This is separate from the style manager’s Restore Deleted feature: deleted gallery media has no in-app undo.
 
@@ -161,7 +161,7 @@ Choose frame lines using the focal-length ruler while keeping the wider scene vi
 
 Record **landscape 16:9 and vertical 9:16 simultaneously from one camera source**. A movable, resizable live landscape window sits inside the main reel viewfinder so you can judge both compositions.
 
-- Two finished files: **1920×1080 landscape** and **1080×1920 vertical**.
+- Two finished files: **1920×1080 landscape** and **1080×1920 vertical**. Dual Shot offers up to 30 fps. Actual cadence depends on the device, grade and temperature.
 - A camera style is baked into the pair. A selected LUT is baked only when its bake control is enabled.
 - No style and no baked LUT means a plain pair.
 - Optional subject tracking moves the reel crop independently; the landscape framing stays centered.
@@ -170,13 +170,15 @@ Record **landscape 16:9 and vertical 9:16 simultaneously from one camera source*
 
 Dual Shot is two crops of one source, not two independently pointed cameras. It does not create four copies, and it does not deliver two 4K files. Available framing is limited by what the camera can see.
 
+In **Gallery → Develop Photo**, open **Color mix** to shift the hue, intensity or brightness of a particular color range. For example, lower the intensity of reds without dulling the blues. Saved edits can be reopened and adjusted.
+
 ## Looks, LUTs and shooting presets
 
 **Looks** are the camera’s visual recipes: color, tone, grain, softness, glow, vignette and other supported adjustments. Use **Fn → Looks / Look Studio** to explore built-in styles, make your own, and adjust the Quality and Tone dials.
 
 **LUTs** are imported `.cube` color transforms. Use the **LUT** pill to select a transform and adjust its mix. Preview and baking are independent: seeing a LUT in the viewfinder does not, by itself, mean it will be written into a file. The LUT pill is yellow when baking is active and white otherwise. Hold/tap A/B to compare against the original preview.
 
-**Shooting presets** remember a setup, including format, exposure, white balance, focus, lens/zoom, style/LUT, Dual Shot, framing and audio choices. Use **LUT → Save Preset** or **Fn → Shooting tools → Shooting presets**. The selected preset is yellow. Changing its setup clears the selection; automatic exposure/focus readings do not. Photo capture modes are included in saved presets. Apply presets between recordings. A referenced custom look or LUT must still be available.
+**Shooting presets** remember a setup, including format, exposure, white balance, focus, lens/zoom, style/LUT, Dual Shot, framing and audio choices. Use **LUT → Save Preset** or **Fn → Shooting tools → Shooting presets**. The selected preset is yellow. Changing its setup clears the selection; automatic exposure/focus readings do not. Photo capture modes are included in saved presets. Apply presets between recordings. In **Manage**, use **Export presets** and **Import presets** to move your setups through Files. Custom looks and LUTs referenced by name need to be available on the destination device. Touch and hold a saved preset to copy its launch link, then use that link with the **Open URLs** action in Shortcuts to open FrameLine Pro with that setup.
 
 ### What saves
 

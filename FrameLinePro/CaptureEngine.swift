@@ -3621,6 +3621,13 @@ nonisolated final class CaptureEngine: NSObject,
         var settings: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String:
             native ? kCVPixelFormatType_420YpCbCr8BiPlanarFullRange : kCVPixelFormatType_32BGRA]
 
+        #if DEBUG
+        if dualPreview, ProcessInfo.processInfo.arguments.contains("--verify-compressed-source"),
+           analysisOutput.availableVideoPixelFormatTypes.contains(kCVPixelFormatType_Lossless_420YpCbCr8BiPlanarFullRange) {
+            settings[kCVPixelBufferPixelFormatTypeKey as String] = kCVPixelFormatType_Lossless_420YpCbCr8BiPlanarFullRange
+        }
+        #endif
+
         guard analysisUnscaled == false,
               let device = videoDevice else {
             analysisApplied = (0, 0)
@@ -3986,7 +3993,8 @@ nonisolated final class CaptureEngine: NSObject,
         sourceUpright: Bool = false,
         mirrored: Bool = false
     ) {
-        if CVPixelBufferGetPlaneCount(buffer) > 0, histogram || waveform {
+        let compressed = CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_Lossless_420YpCbCr8BiPlanarFullRange
+        if compressed || (CVPixelBufferGetPlaneCount(buffer) > 0 && (histogram || waveform)) {
             let source = CIImage(cvPixelBuffer: buffer)
             let scale = min(1, 320 / source.extent.width)
             let size = CGSize(width: max(2, (Int(source.extent.width * scale) / 2) * 2), height: max(2, (Int(source.extent.height * scale) / 2) * 2))
@@ -5768,6 +5776,7 @@ nonisolated final class CaptureEngine: NSObject,
     // An empty edge is held for a moment once seen, so the framing never
     // jumps between cropped and uncropped frames.
     private func stableEdges(for buffer: CVPixelBuffer) -> (l: Int, r: Int, t: Int, b: Int) {
+        if CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_Lossless_420YpCbCr8BiPlanarFullRange { return (0, 0, 0, 0) }
         let found = emptyEdges(of: buffer)
 
         if found.l + found.r + found.t + found.b > 0 {
@@ -6368,6 +6377,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
 
         let eightBit = sourceFormat == kCVPixelFormatType_32BGRA
             || sourceFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+            || sourceFormat == kCVPixelFormatType_Lossless_420YpCbCr8BiPlanarFullRange
             || sourceFormat == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         compression[AVVideoProfileLevelKey] = eightBit ? "HEVC_Main_AutoLevel"
             : (is422 ? "HEVC_Main42210_AutoLevel" : "HEVC_Main10_AutoLevel")

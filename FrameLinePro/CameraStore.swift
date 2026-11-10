@@ -129,6 +129,8 @@ final class CameraStore {
     var dualShot = false {
         didSet {
             engine.setDualPreview(dualShot && mode == .video)
+            updatePreviewLog()
+            refreshRecordingCodecs()
             configureAdvancedFraming()
         }
     }
@@ -160,6 +162,7 @@ final class CameraStore {
     var lenses: [LensOption] = []
     var selectedLensID: String?
     @ObservationIgnored private var pendingLensRefresh: String?
+    @ObservationIgnored private var pendingLaunchPreset: ShootingPreset?
 
     var lensZoom: Double {
         lenses.first { $0.uniqueID == selectedLensID }?.zoom ?? 1
@@ -268,9 +271,13 @@ final class CameraStore {
         }
     }
 
-    var angleFrameRate: Int {
-        recSettings.frameRate ?? 30
+    var effectiveRecordingSettings: RecordingSettings {
+        var settings = recSettings
+        if dualShot, mode == .video { settings.frameRate = min(settings.frameRate ?? 30, 30) }
+        return settings
     }
+
+    var angleFrameRate: Int { effectiveRecordingSettings.frameRate ?? 30 }
 
     var shutterAngleText: String {
         shutterAngle == shutterAngle.rounded()
@@ -622,7 +629,7 @@ final class CameraStore {
                 parts.append(resolution.shortTitle)
             }
 
-            if let fps = recSettings.frameRate {
+            if let fps = effectiveRecordingSettings.frameRate {
                 parts.append("\(fps) fps")
             }
         }
@@ -779,6 +786,7 @@ final class CameraStore {
                 selectedLensID = current
 
                 installCameraControls()
+                applyPendingLaunchPreset()
 
                 // A zoom-only lens change preserves the camera's controls.
                 if controlsNeedReapply { reapplyControls() }
@@ -927,7 +935,7 @@ final class CameraStore {
         let key = [
             logProfile.rawValue,
             recSettings.resolution?.title ?? "auto",
-            "\(recSettings.frameRate ?? 0)",
+            "\(effectiveRecordingSettings.frameRate ?? 0)",
             "\(selectedLensID ?? "")"
         ].joined(separator: "|")
 
@@ -954,7 +962,7 @@ final class CameraStore {
             engine.discoverRecordingCodecs(
                 log: logProfile,
                 dual: dualShot,
-                settings: recSettings,
+                settings: effectiveRecordingSettings,
                 preferredCodec: force ? nil : selectedCodec
             )
         }
@@ -1773,7 +1781,7 @@ final class CameraStore {
                 log: logProfile,
                 dual: dualShot,
                 codec: selectedCodec,
-                settings: recSettings,
+                settings: effectiveRecordingSettings,
                 recordingID: recordingID
             )
         }
@@ -2039,7 +2047,7 @@ final class CameraStore {
         engine.setPreview(
             video: mode == .video,
             log: logProfile,
-            settings: recSettings, codec: selectedCodec
+            settings: effectiveRecordingSettings, codec: selectedCodec
         )
     }
 
@@ -2739,6 +2747,22 @@ final class CameraStore {
             audioInput: selectedMicrophone, audioMonitoring: headphoneMonitoring, focusLens: focusPullLensEnabled, naturalPhoto: naturalPhoto, livePhoto: livePhoto, depthPortrait: depthPortrait)
     }
 
+    func openShootingPreset(_ preset: ShootingPreset) {
+        guard !isRecording else {
+            showToast("Stop recording before opening a preset.")
+            return
+        }
+        activate()
+        pendingLaunchPreset = preset
+        if didResolveCamera { applyPendingLaunchPreset() }
+    }
+
+    private func applyPendingLaunchPreset() {
+        guard let preset = pendingLaunchPreset else { return }
+        pendingLaunchPreset = nil
+        applyShootingPreset(preset)
+    }
+
     func applyShootingPreset(_ preset: ShootingPreset) {
         guard !isRecording else { return }
         cancelFocusPull()
@@ -2911,6 +2935,7 @@ final class CameraStore {
         case .caps(let next):
             caps = next
             didResolveCamera = true
+            if !next.hasCamera { applyPendingLaunchPreset() }
 
             iso = min(max(iso, next.minISO), next.maxISO)
             shutter = min(max(shutter, next.minShutter), next.maxShutter)

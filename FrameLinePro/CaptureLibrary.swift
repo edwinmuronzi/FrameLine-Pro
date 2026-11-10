@@ -16,6 +16,7 @@ nonisolated struct PhotoEdit: Codable, Equatable, Sendable {
     var depthAmount: Double? = nil
     var depthSeparation: Double? = nil
     var preserveHDR: Bool? = nil
+    var colorMix: [PhotoColorBand: PhotoColorAdjustment]? = nil
     var hasCustomFraming: Bool { (crop != nil && crop != .original) || abs(straighten ?? 0) > 0.00001 }
 }
 
@@ -90,7 +91,7 @@ nonisolated enum PhotoDeveloper {
         image = image.applyingFilter("CIExposureAdjust", parameters: ["inputEV": edit.exposure])
             .applyingFilter("CIColorControls", parameters: ["inputSaturation": edit.saturation])
             .applyingFilter("CITemperatureAndTint", parameters: ["inputNeutral": CIVector(x: 6500, y: 0), "inputTargetNeutral": CIVector(x: 6500 + edit.warmth * 2000, y: 0)])
-        return geometry(image, edit: edit)
+        return geometry(PhotoColorMix.apply(edit.colorMix, to: image), edit: edit)
     }
     static func encode(_ image: CIImage) -> Data? {
         context.jpegRepresentation(of: image, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.97])

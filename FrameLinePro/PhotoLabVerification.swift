@@ -17,13 +17,26 @@ nonisolated enum PhotoLabVerification {
         let mask = DepthMask(width: 64, height: 48, pixels: values.withUnsafeBytes { Data($0) })
         guard mask.save(maskURL) else { return false }
         let store = CameraStore(); store.isShowcase = true
+        let preset = store.currentShootingPreset(named: "Round-trip")
+        let presetURL = root.appendingPathComponent("presets.json")
+        do {
+            try PresetFile.encode([preset]).write(to: presetURL)
+            guard try PresetFile.read(presetURL) == [preset] else { return false }
+            try Data("{\"version\":99,\"presets\":[]}".utf8).write(to: presetURL)
+            guard (try? PresetFile.read(presetURL)) == nil else { return false }
+            NSLog("PRESET_FILE_VERIFY PASS round-trip and unsupported version")
+        } catch {
+            NSLog("PRESET_FILE_VERIFY FAIL %@", error.localizedDescription)
+            return false
+        }
+
         var item = CaptureItem(movieURL: nil, storiesURL: nil, rawURL: nil, detail: "Check", simulated: true, mode: .photo)
         item.fullPhotoURL = source; item.cropPhotoURL = framed; item.depthMaskURL = maskURL
         store.captures = [item]
         // The isolated preview store skips real gallery writes. Supply the
         // successful save barrier and test persistence in a temporary archive.
         store.librarySaveTask = Task { true }
-        let edit = PhotoEdit(crop: .square, cropX: 0.8, straighten: 5, exportLongEdge: 1080, depthAmount: 0.8)
+        let edit = PhotoEdit(crop: .square, cropX: 0.8, straighten: 5, exportLongEdge: 1080, depthAmount: 0.8, colorMix: [.red: PhotoColorAdjustment(hue: 25, saturation: -0.2)])
         guard await store.developPhoto(item, edit: edit), let grade = store.graded[AnyHashable(item.id)],
               let file = grade.fullURL, file == grade.cropURL,
               let data = try? Data(contentsOf: file), let result = CIImage(data: data),
@@ -41,6 +54,22 @@ nonisolated enum PhotoLabVerification {
     }
 
     static func run() -> Bool {
+        let bounds = CGRect(x: 0, y: 0, width: 1, height: 1)
+        func pixel(_ image: CIImage) -> [Float] {
+            var channels: [Float] = [0, 0, 0, 0]
+            PhotoDeveloper.context.render(image, toBitmap: &channels, rowBytes: 16, bounds: bounds, format: .RGBAf, colorSpace: nil)
+            return channels
+        }
+        let mix: [PhotoColorBand: PhotoColorAdjustment] = [.red: PhotoColorAdjustment(hue: 30)]
+        let red = CIImage(color: .red).cropped(to: bounds)
+        let blue = CIImage(color: .blue).cropped(to: bounds)
+        guard pixel(PhotoColorMix.apply(mix, to: red))[1] > 0.4,
+              pixel(PhotoColorMix.apply(mix, to: blue)) == pixel(blue) else {
+            NSLog("COLOR_MIX_VERIFY FAIL selective hue")
+            return false
+        }
+        NSLog("COLOR_MIX_VERIFY PASS selective hue")
+
         var cases = 0
         for size in [CGSize(width: 4032, height: 3024), CGSize(width: 3024, height: 4032)] {
         let white = CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size))

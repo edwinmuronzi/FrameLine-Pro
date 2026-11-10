@@ -12,6 +12,7 @@ struct PhotoEditor: View {
     @State private var sourceHasHDR = false
     @State private var saving = false
     @State private var framingExpanded = false
+    @State private var colorBand = PhotoColorBand.red
     @State private var loadingRAW = false
     @State private var error: String?
     private var availableLooks: [FilmLook] {
@@ -40,6 +41,16 @@ struct PhotoEditor: View {
                             adjustment("Brightness", value: $edit.exposure, range: -2...2, help: "Make the whole photograph lighter or darker.")
                             adjustment("Color", value: $edit.saturation, range: 0...2, help: "From black and white to stronger colors.")
                             adjustment("Warmth", value: $edit.warmth, range: -1...1, help: "Move toward cooler blues or warmer golden tones.")
+                            DisclosureGroup("Color mix") {
+                                VStack(spacing: 16) {
+                                    Picker("Color range", selection: $colorBand) {
+                                        ForEach(PhotoColorBand.allCases) { Text($0.title).tag($0) }
+                                    }
+                                    adjustment("Hue shift", value: colorAdjustment(\.hue), range: -30...30, help: "Shift this color toward its neighbors.")
+                                    adjustment("Saturation", value: colorAdjustment(\.saturation), range: -1...1, help: "Strengthen or mute this color.")
+                                    adjustment("Lightness", value: colorAdjustment(\.lightness), range: -1...1, help: "Brighten or darken this color.")
+                                }.padding(.top, 12)
+                            }
                             if depthMask != nil && edit.useRAW != true {
                                 adjustment("Background blur", value: Binding(get: { edit.depthAmount ?? 0.375 }, set: { edit.depthAmount = $0 }), range: 0...1, help: "Soften the background, or slide to zero to keep the whole photo sharp.")
                                 adjustment("Subject separation", value: Binding(get: { edit.depthSeparation ?? 0.5 }, set: { edit.depthSeparation = $0 }), range: 0.1...0.9, help: "Choose how much of the scene stays sharp. Check edges around hair and glass.")
@@ -125,6 +136,17 @@ struct PhotoEditor: View {
             ProgressView("Preparing preview…")
         }
     }
+    private func colorAdjustment(_ key: WritableKeyPath<PhotoColorAdjustment, Double>) -> Binding<Double> {
+        let band = colorBand
+        return Binding {
+            edit.colorMix?[band]?[keyPath: key] ?? 0
+        } set: { newValue in
+            var mix = edit.colorMix ?? [:]
+            mix[band, default: PhotoColorAdjustment()][keyPath: key] = newValue
+            edit.colorMix = mix
+        }
+    }
+
     private func adjustment(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, help: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack { Text(title); Spacer(); Text(value.wrappedValue, format: .number.precision(.fractionLength(1))).monospacedDigit() }

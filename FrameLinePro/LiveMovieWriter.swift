@@ -73,10 +73,16 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
         writers = ([primary] + [secondary].compactMap { $0 }).map {
             LogWriter(url: $0, codec: codec, bitrate: bitrate, fps: fps, audioSettings: audioSettings)
         }
+        var outputFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        #if DEBUG
+        if secondary != nil, ProcessInfo.processInfo.arguments.contains("--verify-compressed-output") {
+            outputFormat = kCVPixelFormatType_Lossless_420YpCbCr8BiPlanarFullRange
+        }
+        #endif
         for size in sizes {
             var pool: CVPixelBufferPool?
             let attributes: [String: Any] = [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+                kCVPixelBufferPixelFormatTypeKey as String: outputFormat,
                 kCVPixelBufferWidthKey as String: Int(size.width),
                 kCVPixelBufferHeightKey as String: Int(size.height),
                 kCVPixelBufferIOSurfacePropertiesKey as String: [:],

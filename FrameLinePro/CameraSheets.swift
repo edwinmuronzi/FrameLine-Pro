@@ -302,7 +302,7 @@ struct SettingsSheet: View {
 
     private var frameRateBinding: Binding<Int?> {
         Binding(
-            get: { store.recSettings.frameRate },
+            get: { store.effectiveRecordingSettings.frameRate },
             set: { store.selectFrameRate($0) }
         )
     }
@@ -470,10 +470,10 @@ struct SettingsSheet: View {
                     .disabled(recordingLocked || store.videoOptions.locked)
 
                     Picker("Frame rate", selection: frameRateBinding) {
-                        Text("Auto").tag(Int?.none)
+                        if !store.dualShot { Text("Auto").tag(Int?.none) }
 
                         ForEach(
-                            store.videoOptions.frameRates(for: store.recSettings.resolution),
+                            store.videoOptions.frameRates(for: store.recSettings.resolution).filter { !store.dualShot || $0 <= 30 },
                             id: \.self
                         ) { fps in
                             Text("\(fps) fps").tag(Optional(fps))
@@ -552,6 +552,20 @@ struct GallerySheet: View {
     @State private var deletion: Set<UUID> = []
     @State private var confirmDeletion = false
 
+    private var selectedFiles: [URL] {
+        var seen: Set<URL> = []
+        return store.captures.filter { selected.contains($0.id) }.flatMap { item -> [URL] in
+            let grade = store.graded[AnyHashable(item.id)]
+            let files: [URL?]
+            if let movie = item.movieURL {
+                files = [grade?.movie ?? movie, grade?.storiesMovie ?? item.storiesURL]
+            } else {
+                files = [grade?.cropURL ?? item.cropPhotoURL ?? grade?.fullURL ?? item.fullPhotoURL]
+            }
+            return files.compactMap { $0 }.filter { seen.insert($0).inserted }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -596,6 +610,13 @@ struct GallerySheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
                 ToolbarItem(placement: .primaryAction) {
+                    if selecting {
+                        let files = selectedFiles
+                        if !files.isEmpty {
+                            ShareLink(items: files) { Image(systemName: "square.and.arrow.up") }
+                                .accessibilityLabel("Share selected captures")
+                        }
+                    }
                     Button(selecting ? "Done" : "Select") { selecting.toggle(); selected = [] }
                         .disabled(store.captures.isEmpty || store.deletingGallery)
                 }

@@ -2,6 +2,7 @@ import Observation
 import PhotosUI
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 // MARK: - Preview rendering
 
@@ -630,6 +631,9 @@ struct LookManager: View {
     @State private var editing: UUID?
     @State private var reset = false
     @State private var setupName = ""
+    @State private var importingPresets = false
+    @State private var exportingPresets = false
+    @State private var notice: String?
     var body: some View {
         NavigationStack {
             List {
@@ -667,6 +671,10 @@ struct LookManager: View {
                     Text("Swipe to remove a style from your camera. Drag its handle in Edit to change the order. Standard stays available. Restore deleted brings removed styles back.")
                 }
                 Section("Shooting presets") {
+                    Button("Import presets", systemImage: "square.and.arrow.down") { importingPresets = true }
+                        .disabled(store.isRecording)
+                    Button("Export presets", systemImage: "square.and.arrow.up") { exportingPresets = true }
+                        .disabled(store.shootingPresets.isEmpty)
                     HStack {
                         TextField("Preset name", text: $setupName)
                         Button("Add") { store.rememberLibraryChange(); store.saveShootingPreset(named: setupName); setupName = "" }
@@ -677,6 +685,12 @@ struct LookManager: View {
                                 if let index = store.shootingPresets.firstIndex(where: { $0.id == preset.id }) { store.shootingPresets[index].name = String(value.prefix(48)) }
                             }))
                             Button("Use") { store.applyShootingPreset(preset) }.buttonStyle(.borderless).tint(Theme.gold)
+                        }
+                        .contextMenu {
+                            Button("Copy launch link", systemImage: "link") {
+                                UIPasteboard.general.string = "framelinepro://preset/\(preset.id.uuidString)"
+                                notice = "Launch link copied. Paste it into an Open URLs action in Shortcuts."
+                            }
                         }
                     }
                     .onDelete { store.deleteManagedPresets($0) }
@@ -697,6 +711,35 @@ struct LookManager: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .sheet(item: Binding(get: { editing.map(EditorID.init) }, set: { editing = $0?.id })) { selection in CustomLookEditor(store: store, id: selection.id) }
+            .fileImporter(isPresented: $importingPresets, allowedContentTypes: [.json]) { result in
+                Task {
+                    do {
+                        let url = try result.get()
+                        let incoming = try await Task.detached(priority: .userInitiated) { try PresetFile.read(url) }.value
+                        guard !store.isRecording else {
+                            notice = "Stop recording before importing presets."
+                            return
+                        }
+                        store.rememberLibraryChange()
+                        store.shootingPresets += incoming.map { value in
+                            var copy = value
+                            copy.id = UUID()
+                            let name = copy.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                            copy.name = name.isEmpty ? "Imported preset" : String(name.prefix(48))
+                            return copy
+                        }
+                        notice = "Imported \(incoming.count) presets. Install any referenced custom styles and LUTs separately."
+                    } catch {
+                        notice = "This file could not be imported as FrameLine Pro presets."
+                    }
+                }
+            }
+            .fileExporter(isPresented: $exportingPresets, document: PresetFile(presets: store.shootingPresets), contentType: .json, defaultFilename: "FrameLine Pro Presets") { result in
+                if case .failure = result { notice = "The presets could not be exported." }
+            }
+            .alert("Shooting presets", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
+                Button("OK", role: .cancel) { notice = nil }
+            } message: { Text(notice ?? "") }
             .confirmationDialog("Reset styles and presets? Photos and videos stay safe.", isPresented: $reset) {
                 Button("Reset styles and presets", role: .destructive) { store.resetStyleLibrary() }
             }

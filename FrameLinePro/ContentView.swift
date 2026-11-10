@@ -54,6 +54,15 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("FrameLineOpenCamera"))) { _ in
             tourCompleted = true; store.showWelcome = false
         }
+        .onOpenURL { url in
+            guard url.scheme == "framelinepro", url.host == "preset",
+                  url.pathComponents.count == 2,
+                  let id = UUID(uuidString: url.lastPathComponent),
+                  let preset = store.shootingPresets.first(where: { $0.id == id }) else { return }
+            tourCompleted = true
+            store.showWelcome = false
+            store.openShootingPreset(preset)
+        }
         .onContinueUserActivity(NSUserActivityTypeLockedCameraCapture) { _ in
             tourCompleted = true; store.showWelcome = false
             Task { await store.importLockedCaptures() }
