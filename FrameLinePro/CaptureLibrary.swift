@@ -61,15 +61,21 @@ nonisolated enum PhotoDeveloper {
             filter.exposure = Float(edit.exposure)
             base = filter.outputImage
         } else { base = CIImage(data: source, options: [.applyOrientationProperty: true]) }
-        guard var image = base else { return nil }
-        if let look = FilmLook.lineup.first(where: { $0.id == edit.styleID }), look.id != "standard" {
+        guard let image = base else { return nil }
+        var recipe = edit
+        if edit.useRAW == true && rawData != nil { recipe.exposure = 0 }
+        return encode(adjust(image, edit: recipe))
+    }
+    static func adjust(_ source: CIImage, edit: PhotoEdit) -> CIImage {
+        var image = source
+        if let look = FilmLook.lineup.first(where: { $0.id == edit.styleID }) ?? CustomLookRegistry.shared.look(for: edit.styleID).map(FilmLook.custom), look.id != "standard" {
             let style = StyleParams(look: look, options: LookOptions(), dials: LookRecipe.defaultDials(for: look.id))
             image = StyleGrade.grade(image, cube: nil, cubeSize: 0, intensity: 1, style: style)
         }
-        image = image.applyingFilter("CIExposureAdjust", parameters: ["inputEV": edit.useRAW == true && rawData != nil ? 0 : edit.exposure])
+        image = image.applyingFilter("CIExposureAdjust", parameters: ["inputEV": edit.exposure])
             .applyingFilter("CIColorControls", parameters: ["inputSaturation": edit.saturation])
             .applyingFilter("CITemperatureAndTint", parameters: ["inputNeutral": CIVector(x: 6500, y: 0), "inputTargetNeutral": CIVector(x: 6500 + edit.warmth * 2000, y: 0)])
-        return encode(image)
+        return image
     }
     static func encode(_ image: CIImage) -> Data? {
         context.jpegRepresentation(of: image, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.97])

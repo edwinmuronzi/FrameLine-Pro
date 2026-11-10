@@ -64,7 +64,7 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
         for size in sizes {
             var pool: CVPixelBufferPool?
             let attributes: [String: Any] = [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
                 kCVPixelBufferWidthKey as String: Int(size.width),
                 kCVPixelBufferHeightKey as String: Int(size.height),
                 kCVPixelBufferIOSurfacePropertiesKey as String: [:],
@@ -123,6 +123,9 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
             var destination: CVPixelBuffer?
             let attributes = [kCVPixelBufferPoolAllocationThresholdKey as String: 8] as CFDictionary
             guard CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(nil, pools[index], attributes, &destination) == kCVReturnSuccess, let destination else { return }
+            CVBufferSetAttachment(destination, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
+            CVBufferSetAttachment(destination, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB, .shouldPropagate)
+            CVBufferSetAttachment(destination, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
             let target = CIRenderDestination(pixelBuffer: destination)
             target.colorSpace = colorSpace
             do {

@@ -3,10 +3,12 @@ import SwiftUI
 struct ShootingToolsSheet: View {
     @Bindable var store: CameraStore
     @Environment(\.dismiss) private var dismiss
+    @State private var showLibraryManager = false
     var body: some View {
         NavigationStack {
             Form {
                 Section {
+                    Button { showLibraryManager = true } label: { Label("Manage styles & presets", systemImage: "square.stack.3d.up") }
                     NavigationLink { FeatureGuide() } label: { Label("Camera guide · plain English", systemImage: "questionmark.circle") }
                     NavigationLink { PhotoFeaturesView(store: store) } label: { Label("Photo capture", systemImage: "camera") }
                     NavigationLink { ShortcutSettings(store: store) } label: { Label("Viewfinder shortcuts", systemImage: "rectangle.3.group") }
@@ -34,6 +36,7 @@ struct ShootingToolsSheet: View {
             .navigationTitle("Shooting tools")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
+        .sheet(isPresented: $showLibraryManager) { LookManager(store: store) }
         .tint(Theme.gold)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
@@ -73,7 +76,7 @@ struct ShootingPresetsView: View {
                         Menu {
                             Button("Rename", systemImage: "pencil") { renamed = preset.name; renameID = preset.id }
                             Button("Delete", systemImage: "trash", role: .destructive) {
-                                store.shootingPresets.removeAll { $0.id == preset.id }
+                                if let index = store.shootingPresets.firstIndex(where: { $0.id == preset.id }) { store.deleteManagedPresets(IndexSet(integer: index)) }
                             }
                         } label: { Image(systemName: "ellipsis").padding(8) }
                     }

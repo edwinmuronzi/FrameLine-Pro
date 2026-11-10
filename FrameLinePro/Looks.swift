@@ -495,7 +495,7 @@ nonisolated final class CustomLookRegistry: @unchecked Sendable {
 
     func update(_ all: [CustomLook]) {
         lock.lock()
-        looks = Dictionary(uniqueKeysWithValues: all.map { ($0.lookID, $0) })
+        looks = Dictionary(all.map { ($0.lookID, $0) }, uniquingKeysWith: { first, _ in first })
         lock.unlock()
     }
 

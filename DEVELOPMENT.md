@@ -42,3 +42,11 @@ New Debug diagnostics:
 Use an optimized **Release** build on the user's phone for final review. For optimized diagnostic builds only, use Release with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG`; install a clean Release without that override afterwards. Debug-build timing is not representative of shipped performance.
 
 Thermal stress testing exposed reduced throughput on a phone already in the serious thermal state. Do not describe this as zero heat, zero dropped frames, or guaranteed 30 fps across hardware. Output dimensions, codec, bitrate and requested rate are preserved. Final UI checks: first-launch/replayed fifteen-page tour, Reduce Motion/large text, three custom shortcuts, focus-strip/LUT/A–B overlap, Photo/Rangefinder manual AUTO versus bracketing, persistent original/edited sharing, paired Live Photo playback in Photos, and depth edge quality.
+
+## 1.2.1 implementation notes
+
+`InteractivePhotoPreview` caches the source image and draws only when adjustments change; full-resolution encoding stays in the explicit save path. Keep editing off the camera session. `LookLibraryManagement` persists visibility/order/trash and bounded undo snapshots; archive deleted custom recipes so old edits remain reproducible.
+
+Do not probe recording codecs from Photo/Rangefinder mode: changing the active video format can silently disable depth delivery. Configure depth-compatible formats before capture and preserve the restored camera configuration on foreground resume. Shared CameraCaptureIntent membership belongs to the app, WidgetKit control and secure capture extension; the extension must handle hardware capture events. Test actual Lock Screen routing on hardware, not solely build metadata.
+
+Use native NV12 output for 8-bit styled recordings and preserve explicit transfer/matrix attachments. The color diagnostic compares mean linear RGB error, not an sRGB-encoded error statistic. Keep the longer efficiency test and inspect both frame counts and thermal state; successful file creation alone does not prove smooth sustained recording. See VALIDATION.md for measured results and COMPETITOR_REVIEW.md for remaining product priorities.

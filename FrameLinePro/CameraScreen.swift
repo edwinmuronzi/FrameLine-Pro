@@ -61,8 +61,7 @@ struct CameraScreen: View {
 
             if phase == .active {
                 store.resumeForegroundWork()
-                store.engine.start()
-                store.refreshRecordingCodecs()
+                if !store.reviewingCaptures { store.engine.start(); store.refreshRecordingCodecs() }
             } else if phase == .background {
                 store.suspendBackgroundWork()
                 if !store.isRecording { store.engine.stop() }
@@ -78,6 +77,14 @@ struct CameraScreen: View {
         .onChange(of: store.requestGallery) { _, requested in if requested { showGallery = true; store.requestGallery = false } }
         .sheet(isPresented: $showGallery) {
             GallerySheet(store: store)
+                .onAppear {
+                    store.reviewingCaptures = true
+                    if !store.isRecording { store.engine.stop(releaseRenderCaches: false) }
+                }
+                .onDisappear {
+                    store.reviewingCaptures = false
+                    if scenePhase == .active { store.engine.start() }
+                }
         }
         .sheet(isPresented: $showSettings) {
             SettingsSheet(store: store)
@@ -3490,7 +3497,7 @@ struct CaptureButtonModifier: ViewModifier {
     let store: CameraStore
 
     func body(content: Content) -> some View {
-        if store.isShowcase {
+        if store.isShowcase || store.reviewingCaptures {
             content
         } else if #available(iOS 18.0, *) {
             content.onCameraCaptureEvent { event in

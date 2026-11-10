@@ -1,8 +1,10 @@
 import SwiftUI
+import LockedCameraCapture
 
 struct ContentView: View {
     @State private var store = CameraStore()
     @AppStorage("frameline.featureTour.completed.v1") private var tourCompleted = false
+    @AppStorage("frameline.openCamera.requested") private var cameraRequested = false
 
     var body: some View {
         Group {
@@ -12,6 +14,8 @@ struct ContentView: View {
                 CameraShowcase(story: FeatureStory.all[index])
             } else if ProcessInfo.processInfo.arguments.contains("--export-marketing") {
                 MarketingExportHost()
+            } else if ProcessInfo.processInfo.arguments.contains("--verify-editor-preview") {
+                EditorPreviewVerification()
             } else if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--verify-") }) {
                 CameraScreen(store: store)
             } else if ProcessInfo.processInfo.arguments.contains("--show-tour") {
@@ -27,7 +31,7 @@ struct ContentView: View {
 
     private var mainContent: some View {
         Group {
-            if !tourCompleted || store.showWelcome {
+            if (!tourCompleted || store.showWelcome) && !cameraRequested {
                 FeatureTour {
                     tourCompleted = true
                     store.showWelcome = false
@@ -38,7 +42,15 @@ struct ContentView: View {
                 }
             } else {
                 CameraScreen(store: store)
+                    .onAppear { if cameraRequested { tourCompleted = true; store.showWelcome = false; cameraRequested = false } }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("FrameLineOpenCamera"))) { _ in
+            tourCompleted = true; store.showWelcome = false
+        }
+        .onContinueUserActivity(NSUserActivityTypeLockedCameraCapture) { _ in
+            tourCompleted = true; store.showWelcome = false
+            Task { await store.importLockedCaptures() }
         }
     }
 }

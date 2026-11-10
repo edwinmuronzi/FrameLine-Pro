@@ -131,7 +131,7 @@ struct FnSheet: View {
                 }
             }
             .task { buildThumbs() }
-            .onChange(of: store.customLooks) { _, _ in buildThumbs() }
+            .onChange(of: store.allLooks.map(\.id)) { _, _ in buildThumbs() }
             .fullScreenCover(isPresented: $showStudio) {
                 LookStudio(store: store)
             }

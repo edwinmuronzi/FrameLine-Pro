@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import AVKit
 import ExtensionKit
 import LockedCameraCapture
 import SwiftUI
@@ -31,6 +32,9 @@ struct SecureCamera: View {
                 }
             }.padding(20)
         }.foregroundStyle(.white).preferredColorScheme(.dark)
+        .onCameraCaptureEvent { event in
+            if event.phase == .ended { camera.shoot(into: session.sessionContentURL) }
+        }
         .task { await camera.start() }
         .onDisappear { camera.stop() }
     }

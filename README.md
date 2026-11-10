@@ -68,13 +68,27 @@ Captures, original files and edit recipes stay in the app after closing it. Open
 
 The gallery is local to this installation, not an online backup. Deleting a capture removes its app files; copies already saved to Photos remain there. Locked-screen captures transfer into the app gallery after unlocking; export/share them from there when needed.
 
+### Manage styles and presets
+
+Open **Look Studio → Manage**, or **Fn → Shooting tools → Manage styles & presets**.
+
+- **Add style:** copy a built-in style, start from scratch or try random settings. Tap a custom style to edit it.
+- **Remove:** swipe a style or shooting preset away. Built-in styles are hidden from the picker, so they can be restored; Standard stays available.
+- **Rearrange:** tap Edit and drag the handles. The camera’s style picker follows that order.
+- **Shooting presets:** add the current camera setup, rename a saved setup or tap Use to load it.
+- **Undo:** restores the previous library state, with up to eight saved changes retained across launches.
+- **Restore deleted:** brings removed built-in/custom styles and shooting presets back.
+- **Reset styles and presets:** restores the default built-ins and clears custom styles/presets after confirmation. It does not delete photos or videos; Undo can recover the previous library.
+
+The photo editor caches a decoded preview and renders slider changes directly with Metal/Core Image. It no longer waits for you to stop sliding or encodes a JPEG for each preview. Saving still develops the original at full resolution. An idle camera pauses while the gallery is open to reduce background power use; recording continues if you review while rolling.
+
 ### Your shortcuts, within reach
 
 Use **Fn → Shooting tools → Viewfinder shortcuts** to choose the three buttons above the zoom ruler. Available choices include countdown, timelapse, magnifier, histogram, looks, manual controls, gallery and focus pulls. Picking a duplicate swaps its old position so the row stays clean. Reset restores the original arrangement.
 
 ### Lock Screen camera
 
-Long-press your Lock Screen, choose **Customize**, replace a bottom control and select **FrameLine camera**. You can also add its control in Control Center. The locked camera is a separate, simple photo experience: it cannot browse your gallery or expose previous images. Tap its open-app button to authenticate and open the full app. After unlocking, new photos are imported into FrameLinePro’s gallery. Camera permission must be granted; the system controls authentication and extension availability.
+Long-press your Lock Screen, choose **Customize**, replace a bottom control and select **FrameLine camera**. You can also add its control in Control Center. The locked camera is a separate, simple photo experience: it cannot browse your gallery or expose previous images. Tap its open-app button to authenticate and open the full app. After unlocking, new photos are imported into FrameLinePro’s gallery. Camera permission must be granted; the system controls authentication and extension availability. After updating an existing control, remove and add FrameLine camera again if iOS has cached the old registration. The capture extension includes the shared camera intent and hardware-capture event handler required by the system lifecycle. When the phone is already unlocked, the intent explicitly opens the camera in the main app.
 
 ### Plain-English camera guide
 
@@ -198,6 +212,8 @@ The marketing scenes are **AI-generated illustrative photography**, not evidence
 Ten coordinated **1320×2868, opaque PNG** images are in [Marketing/AppStore](Marketing/AppStore), covering the main camera, photo, video, Dual Shot, looks/LUTs, rangefinder, manual controls, scopes, shooting tools and the overall experience.
 
 The set is designed for the iPhone App Store screenshot slot; confirm [Apple’s current screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/) and your actual supported devices before submission. It is a prepared marketing set, not an App Store approval or a published listing. See [the marketing notes](Marketing/README.md) for source, copy and regeneration details.
+
+See [the current comparison with Halide, No Fusion, Moment Pro Camera II and mood.camera](COMPETITOR_REVIEW.md) for remaining priorities.
 
 See [validation results and remaining device checks](VALIDATION.md) for the tested scope and sustained thermal limits.
 

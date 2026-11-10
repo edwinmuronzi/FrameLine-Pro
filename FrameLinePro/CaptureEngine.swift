@@ -388,6 +388,7 @@ nonisolated final class CaptureEngine: NSObject,
     private var requestedPhotoLive = false
     private var requestedPhotoDepth = false
     private var requestedNaturalRaw = false
+    private var previewCodec: RecordingCodec?
     private var previewVideo = false
     private var previewSettings: RecordingSettings?
     private var cachedProbes: [FormatProbe] = []
@@ -524,7 +525,7 @@ nonisolated final class CaptureEngine: NSObject,
         queue.async { [weak self] in
             self?.sessionWanted = true
             self?.stopAfterPhotos = false
-            self?.startOnQueue()
+            if self?.session.isRunning == false { self?.startOnQueue() }
         }
     }
 
@@ -532,7 +533,7 @@ nonisolated final class CaptureEngine: NSObject,
         queue.async { [weak self] in self?.sessionWanted = foreground }
     }
 
-    func stop() {
+    func stop(releaseRenderCaches: Bool = true) {
         queue.async { [weak self] in
             guard let self else { return }
             self.sessionWanted = false
@@ -540,7 +541,7 @@ nonisolated final class CaptureEngine: NSObject,
             self.liveTimer?.cancel(); self.liveTimer = nil
             if self.session.isRunning { self.session.stopRunning() }
             self.audioQueue.async { [weak self] in self?.cameraAudio.stop() }
-            if self.currentLiveWriter() == nil, self.currentWriter() == nil {
+            if releaseRenderCaches, self.currentLiveWriter() == nil, self.currentWriter() == nil {
                 self.analysisQueue.async { [weak self] in self?.ciContext.clearCaches() }
             }
         }
@@ -1261,12 +1262,38 @@ nonisolated final class CaptureEngine: NSObject,
         }
     }
 
+    private func prepareDepthFormat() {
+        guard let device = videoDevice else { return }
+        if device.activeFormat.supportedDepthDataFormats.isEmpty,
+           let format = device.formats.filter({ !$0.supportedDepthDataFormats.isEmpty && $0.videoSupportedFrameRateRanges.contains(where: { $0.maxFrameRate >= 30 }) }).max(by: {
+               let a = $0.formatDescription.dimensions, b = $1.formatDescription.dimensions
+               return a.width * a.height < b.width * b.height
+           }) {
+            lock(device) { device.activeFormat = format }
+        }
+        if let depth = device.activeFormat.supportedDepthDataFormats.max(by: { $0.formatDescription.dimensions.width < $1.formatDescription.dimensions.width }) {
+            lock(device) { device.activeDepthDataFormat = depth }
+        }
+        photoOutput.isZeroShutterLagEnabled = false
+        if photoOutput.isFastCapturePrioritizationSupported { photoOutput.isFastCapturePrioritizationEnabled = false }
+        if let largest = device.activeFormat.supportedMaxPhotoDimensions.max(by: { $0.width * $0.height < $1.width * $1.height }) { photoOutput.maxPhotoDimensions = largest }
+    }
+
     func configurePhotoCompanions(live: Bool, depth: Bool, natural: Bool = false) {
         queue.async { [weak self] in
             guard let self, self.photoDelegates.isEmpty, !self.movieOutput.isRecording, self.currentLiveWriter() == nil else { return }
             self.requestedPhotoLive = live; self.requestedPhotoDepth = depth; self.requestedNaturalRaw = natural
+            if depth, self.position == .front, self.videoDevice?.deviceType != .builtInTrueDepthCamera {
+                self.rebuildSingle(); return
+            }
             self.session.beginConfiguration()
-            if self.photoOutput.isAppleProRAWSupported { self.photoOutput.isAppleProRAWEnabled = !natural }
+            if self.photoOutput.isAppleProRAWSupported { self.photoOutput.isAppleProRAWEnabled = !natural && !depth && !live }
+            if depth, self.session.canSetSessionPreset(.photo) { self.session.sessionPreset = .photo }
+            if depth { self.prepareDepthFormat() }
+            else {
+                if self.photoOutput.isZeroShutterLagSupported { self.photoOutput.isZeroShutterLagEnabled = true }
+                if self.photoOutput.isFastCapturePrioritizationSupported { self.photoOutput.isFastCapturePrioritizationEnabled = true }
+            }
             if live, self.session.outputs.contains(self.movieOutput) { self.session.removeOutput(self.movieOutput) }
             self.photoOutput.isLivePhotoCaptureEnabled = live && self.photoOutput.isLivePhotoCaptureSupported
             self.photoOutput.isDepthDataDeliveryEnabled = depth && self.photoOutput.isDepthDataDeliverySupported
@@ -1293,11 +1320,12 @@ nonisolated final class CaptureEngine: NSObject,
             if self.photoOutput.isLivePhotoCaptureEnabled {
                 settings.livePhotoMovieFileURL = FileManager.default.temporaryDirectory.appendingPathComponent("Live-\(id.uuidString).mov")
             }
-            if self.photoOutput.isDepthDataDeliveryEnabled {
+            if self.requestedPhotoDepth, self.photoOutput.isDepthDataDeliverySupported, !self.photoOutput.isDepthDataDeliveryEnabled { self.photoOutput.isDepthDataDeliveryEnabled = true }
+            if self.photoOutput.isDepthDataDeliveryEnabled && self.requestedPhotoDepth {
                 settings.isDepthDataDeliveryEnabled = true
                 settings.embedsDepthDataInPhoto = true
             }
-            if settings.rawPhotoPixelFormatType == 0 { settings.photoQualityPrioritization = .balanced }
+            if settings.rawPhotoPixelFormatType == 0 { settings.photoQualityPrioritization = settings.isDepthDataDeliveryEnabled ? .quality : .balanced }
 
             let angle = self.captureAngle()
 
@@ -1306,6 +1334,9 @@ nonisolated final class CaptureEngine: NSObject,
                 connection.videoRotationAngle = angle
             }
 
+            #if DEBUG
+            if self.requestedPhotoDepth { NSLog("DEPTH_REQUEST supported=%d enabled=%d requested=%d camera=%@", self.photoOutput.isDepthDataDeliverySupported ? 1 : 0, self.photoOutput.isDepthDataDeliveryEnabled ? 1 : 0, settings.isDepthDataDeliveryEnabled ? 1 : 0, self.videoDevice?.localizedName ?? "none") }
+            #endif
             let uniqueID = settings.uniqueID
             let delegate = PhotoShotDelegate { [weak self] processed, raw, companion in
                 self?.queue.async { [weak self] in
@@ -1950,7 +1981,7 @@ nonisolated final class CaptureEngine: NSObject,
             }
 
             if photoOutput.isAppleProRAWSupported {
-                photoOutput.isAppleProRAWEnabled = !requestedNaturalRaw
+                photoOutput.isAppleProRAWEnabled = !requestedNaturalRaw && !requestedPhotoDepth && !requestedPhotoLive
             }
 
             // Shorter wait between tapping and capturing.
@@ -1971,6 +2002,7 @@ nonisolated final class CaptureEngine: NSObject,
         }
 
         photoOutput.isLivePhotoCaptureEnabled = requestedPhotoLive && photoOutput.isLivePhotoCaptureSupported
+        if requestedPhotoDepth { prepareDepthFormat() }
         photoOutput.isDepthDataDeliveryEnabled = requestedPhotoDepth && photoOutput.isDepthDataDeliverySupported
 
         addAnalysisOutput()
@@ -2702,6 +2734,8 @@ nonisolated final class CaptureEngine: NSObject,
         useChosenLens: Bool = true
     ) -> AVCaptureDevice? {
 
+        if position == .front, requestedPhotoDepth,
+           let depth = AVCaptureDevice.default(.builtInTrueDepthCamera, for: .video, position: .front) { return depth }
         if position == .back, !physicalFocusMode {
             let virtuals = AVCaptureDevice.DiscoverySession(
                 deviceTypes: [.builtInTripleCamera, .builtInDualWideCamera, .builtInDualCamera],
@@ -3435,9 +3469,10 @@ nonisolated final class CaptureEngine: NSObject,
     func setPreview(
         video: Bool,
         log: LogProfile,
-        settings: RecordingSettings
+        settings: RecordingSettings, codec: RecordingCodec? = nil
     ) {
         queue.async { [weak self] in
+            self?.previewCodec = codec
             self?.cameraAudio.setMetering(video)
             self?.previewVideo = video
             self?.previewLog = log
@@ -3462,12 +3497,14 @@ nonisolated final class CaptureEngine: NSObject,
 
     private func applyPreviewFormat() {
         guard let settings = previewSettings,
-              usesCustomFormat(log: previewLog, settings: settings),
+              (usesCustomFormat(log: previewLog, settings: settings) || previewCodec?.rawValue.hasPrefix("ap") == true),
               let device = videoDevice else {
             return
         }
 
-        for group in FormatGroup.allCases {
+        let groups: [FormatGroup] = previewLog != .off || previewCodec?.rawValue.hasPrefix("ap") == true
+            ? FormatGroup.allCases : [.eightBit420, .tenBit420, .tenBit422]
+        for group in groups {
             guard let format = bestFormat(
                 in: group,
                 device: device,
@@ -6124,6 +6161,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
             || sourceFormat == kCVPixelFormatType_422YpCbCr10BiPlanarFullRange
 
         let eightBit = sourceFormat == kCVPixelFormatType_32BGRA
+            || sourceFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
             || sourceFormat == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         compression[AVVideoProfileLevelKey] = eightBit ? "HEVC_Main_AutoLevel"
             : (is422 ? "HEVC_Main42210_AutoLevel" : "HEVC_Main10_AutoLevel")

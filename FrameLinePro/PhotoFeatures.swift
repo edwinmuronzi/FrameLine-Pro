@@ -62,7 +62,7 @@ extension CameraStore {
         if mode == .video { selectMode(.photo) }
         naturalPhoto = feature == .natural; livePhoto = feature == .live; depthPortrait = feature == .portrait
         if naturalPhoto { focusPullLensEnabled = true }
-        if depthPortrait { rawEnabled = false }
+        if depthPortrait { rawEnabled = false; focusPullLensEnabled = false }
         if livePhoto {
             rawEnabled = false; naturalPhoto = false; depthPortrait = false
             look = .standard; bakeLUT = false; saveTarget = .full; aspect = .sensor

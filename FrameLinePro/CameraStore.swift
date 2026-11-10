@@ -13,6 +13,7 @@ final class CameraStore {
     var showcaseImage: UIImage?
     var showWelcome = false
     var requestGallery = false
+    var reviewingCaptures = false
     var viewfinderShortcuts: [ViewfinderShortcut] = {
         let saved = UserDefaults.standard.stringArray(forKey: "frameline.shortcuts.v1")?.compactMap(ViewfinderShortcut.init(rawValue:))
         return saved?.count == 3 ? saved! : [.timelapse, .magnify, .timer]
@@ -129,7 +130,7 @@ final class CameraStore {
     }
 
     var availableCodecs: [RecordingCodec] = []
-    var selectedCodec: RecordingCodec?
+    var selectedCodec: RecordingCodec? { didSet { if selectedCodec != oldValue { updatePreviewLog() } } }
 
     // Resolution, frame rate and bitrate for video recording.
     var recSettings = RecordingSettings.load() {
@@ -370,14 +371,22 @@ final class CameraStore {
     }
 
     // The presets, then the ones you made.
+    var lookLibrary = LookLibraryPreferences.load() { didSet { if !isShowcase { lookLibrary.save(); CustomLookRegistry.shared.update(customLooks + lookLibrary.deletedLooks) } } }
+    var libraryUndo: [LookLibrarySnapshot] = {
+        UserDefaults.standard.data(forKey: "frameline.lookLibrary.undo").flatMap { try? JSONDecoder().decode([LookLibrarySnapshot].self, from: $0) } ?? []
+    }()
     var allLooks: [FilmLook] {
-        FilmLook.lineup + customLooks.map { FilmLook.custom($0) }
+        let catalog = (FilmLook.lineup + customLooks.map { FilmLook.custom($0) }).filter { $0.id == "standard" || !lookLibrary.hidden.contains($0.id) }
+        return catalog.enumerated().sorted {
+            let a = lookLibrary.order.firstIndex(of: $0.element.id) ?? (lookLibrary.order.count + $0.offset)
+            let b = lookLibrary.order.firstIndex(of: $1.element.id) ?? (lookLibrary.order.count + $1.offset)
+            return a < b
+        }.map(\.element)
     }
 
     var customLooks: [CustomLook] = CustomLook.loadAll() {
         didSet {
-            CustomLook.saveAll(customLooks)
-            CustomLookRegistry.shared.update(customLooks)
+            if !isShowcase { CustomLook.saveAll(customLooks); CustomLookRegistry.shared.update(customLooks + lookLibrary.deletedLooks) }
             updateStyle()
         }
     }
@@ -535,6 +544,7 @@ final class CameraStore {
     @ObservationIgnored private var stillContexts: [UUID: StillContext] = [:]
     @ObservationIgnored private var compositionTail: Task<Void, Never>?
     @ObservationIgnored private var compositionTailID: UUID?
+    @ObservationIgnored private var verifiedDepthIDs: Set<UUID> = []
     var pendingPhotoCount = 0
 
     private var photoCapacity: Int { rawEnabled || naturalPhoto || livePhoto || depthPortrait || format == .heifMax ? 2 : 5 }
@@ -678,7 +688,7 @@ final class CameraStore {
         observeLockedImports()
         restoreLibrary()
 
-        CustomLookRegistry.shared.update(customLooks)
+        CustomLookRegistry.shared.update(customLooks + lookLibrary.deletedLooks)
         if !UserDefaults.standard.bool(forKey: "frameline.preserveSessionV2") {
             preserveSettings = true
             UserDefaults.standard.set(true, forKey: "frameline.preserveSessionV2")
@@ -846,6 +856,9 @@ final class CameraStore {
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-burst") { verifyPhotoBurst() }
         if ProcessInfo.processInfo.arguments.contains("--verify-upgrade") { verifyUpgrade() }
         if ProcessInfo.processInfo.arguments.contains("--verify-library") { verifyLibraryAndEdits() }
+        if ProcessInfo.processInfo.arguments.contains("--verify-nv12") { verifyNV12Output() }
+        if ProcessInfo.processInfo.arguments.contains("--verify-manager") { verifyStyleManagement() }
+        if ProcessInfo.processInfo.arguments.contains("--verify-depth") { verifyDepthResume() }
         if ProcessInfo.processInfo.arguments.contains("--verify-direct-grade") { verifyDirectGrade() }
         if ProcessInfo.processInfo.arguments.contains("--verify-viewfinder") { verifyViewfinderFocus() }
         if (ProcessInfo.processInfo.arguments.contains("--verify-styled-recording") || ProcessInfo.processInfo.arguments.contains("--verify-efficiency") || ProcessInfo.processInfo.arguments.contains("--verify-interruption")) {
@@ -899,7 +912,7 @@ final class CameraStore {
     private var lastCodecKey: String?
 
     func refreshRecordingCodecs(force: Bool = false) {
-        guard bound, !applyingShootingPreset, isRecording == false else { return }
+        guard bound, mode == .video, !reviewingCaptures, !applyingShootingPreset, isRecording == false else { return }
 
         let key = [
             logProfile.rawValue,
@@ -921,7 +934,7 @@ final class CameraStore {
 
             guard Task.isCancelled == false,
                   let self,
-                  bound,
+                  bound, mode == .video, !reviewingCaptures,
                   isRecording == false else {
                 return
             }
@@ -932,7 +945,7 @@ final class CameraStore {
                 log: logProfile,
                 dual: dualShot,
                 settings: recSettings,
-                preferredCodec: selectedCodec
+                preferredCodec: force ? nil : selectedCodec
             )
         }
     }
@@ -1105,7 +1118,7 @@ final class CameraStore {
         // Log previews flat in video mode only.
         updatePreviewLog()
 
-        if logProfile != .off {
+        if next == .video {
             refreshRecordingCodecs()
         }
     }
@@ -1367,8 +1380,11 @@ final class CameraStore {
         defaults.set(depthPortrait, forKey: "frameline.p.depth")
     }
 
+    private var restoringSession = false
     private func restorePreserved() {
         guard preserveSettings else { return }
+        restoringSession = true
+        defer { restoringSession = false }
 
         let defaults = UserDefaults.standard
 
@@ -2009,7 +2025,7 @@ final class CameraStore {
         engine.setPreview(
             video: mode == .video,
             log: logProfile,
-            settings: recSettings
+            settings: recSettings, codec: selectedCodec
         )
     }
 
@@ -2706,7 +2722,7 @@ final class CameraStore {
         cancelFocusPull()
         var missing: [String] = []
         applyingShootingPreset = true
-        focusPullLensEnabled = preset.focusLens ?? false
+        focusPullLensEnabled = (preset.depthPortrait ?? false) ? false : (preset.focusLens ?? false)
         selectMode(CaptureMode(rawValue: preset.mode) ?? .video)
         naturalPhoto = mode != .video && (preset.naturalPhoto ?? false)
         livePhoto = mode != .video && (preset.livePhoto ?? false)
@@ -2748,7 +2764,7 @@ final class CameraStore {
         applyingShootingPreset = false
         selectedPresetID = shootingPresets.contains(where: { $0.id == preset.id }) ? preset.id : nil
         refreshRecordingCodecs()
-        showToast("Loaded \(preset.name)." + (missing.isEmpty ? "" : " " + missing.joined(separator: "; ") + "."))
+        if !restoringSession { showToast("Loaded \(preset.name)." + (missing.isEmpty ? "" : " " + missing.joined(separator: "; ") + ".")) }
     }
 
     func importLUT(from url: URL) {
@@ -3129,6 +3145,7 @@ final class CameraStore {
             guard let self else { return }
             if context.natural, !prepared.naturalDeveloped { showToast("Natural RAW development wasn’t available; the standard photo and any RAW were kept.") }
             #if DEBUG
+            if prepared.portraitRendered { verifiedDepthIDs.insert(id) }
             if ProcessInfo.processInfo.arguments.contains("--verify-upgrade") { NSLog("UPGRADE_CAPTURE id=%@ natural=%d depth=%d live=%d", id.uuidString, prepared.naturalDeveloped ? 1 : 0, prepared.portraitRendered ? 1 : 0, companion.liveMovie == nil ? 0 : 1) }
             #endif
             var item = CaptureItem(fullImage: prepared.full, cropImage: prepared.crop, movieURL: nil,
@@ -3165,6 +3182,34 @@ final class CameraStore {
     }
 
     #if DEBUG
+    func verifyDepthResume() {
+        Task { @MainActor in
+            UIApplication.shared.isIdleTimerDisabled = true
+            defer { UIApplication.shared.isIdleTimerDisabled = false }
+            saveToPhotos = false; selectMode(.photo); format = .heif; look = .standard; saveTarget = .full; aspect = .sensor
+            try? await Task.sleep(for: .seconds(2))
+            setPhotoFeature(.portrait)
+            try? await Task.sleep(for: .seconds(2))
+            var delivered = 0
+            for attempt in 0..<3 {
+                refreshRecordingCodecs(force: true)
+                if attempt > 0 {
+                    engine.stop(releaseRenderCaches: false)
+                    try? await Task.sleep(for: .milliseconds(200)); engine.start()
+                    try? await Task.sleep(for: .milliseconds(650))
+                }
+                let id = submitPhoto(), start = ProcessInfo.processInfo.systemUptime
+                while stillContexts[id] != nil, ProcessInfo.processInfo.systemUptime - start < 20 { try? await Task.sleep(for: .milliseconds(40)) }
+                let passed = verifiedDepthIDs.remove(id) != nil
+                if passed { delivered += 1 }
+                NSLog("DEPTH_RESUME_VERIFY attempt=%ld %@", attempt, passed ? "PASS" : "FAIL")
+                if let item = captures.first(where: { $0.id == id }) { delete(item) }
+            }
+            setPhotoFeature(.standard)
+            NSLog("DEPTH_RESUME_VERIFY %@ delivered=%ld/3", delivered == 3 ? "PASS" : "FAIL", delivered)
+        }
+    }
+
     func verifyUpgrade() {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))

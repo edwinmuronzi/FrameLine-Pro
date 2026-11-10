@@ -494,6 +494,7 @@ struct LookStudio: View {
         .onChange(of: library.items) { _, _ in
             buildThumbs()
         }
+        .onChange(of: store.allLooks.map(\.id)) { _, _ in buildThumbs() }
     }
 
     // The presets, side by side. Tap one to use it.
@@ -626,81 +627,82 @@ struct LookStudio: View {
 struct LookManager: View {
     @Bindable var store: CameraStore
     @Environment(\.dismiss) private var dismiss
-
     @State private var editing: UUID?
-
+    @State private var reset = false
+    @State private var setupName = ""
     var body: some View {
         NavigationStack {
             List {
                 Section {
                     Menu {
-                        Menu("From a preset") {
+                        Menu("Copy an existing style") {
                             ForEach(FilmLook.lineup) { look in
-                                Button(look.name) {
-                                    editing = store.addCustomLook(basedOn: look)
-                                }
+                                Button(look.name) { store.rememberLibraryChange(); editing = store.addCustomLook(basedOn: look) }
                             }
                         }
-
-                        Button("From scratch") {
-                            editing = store.addCustomLook(basedOn: nil)
-                        }
-
-                        Button("Random settings") {
-                            editing = store.addRandomCustomLook()
-                        }
-                    } label: {
-                        Label("New preset", systemImage: "plus.circle.fill")
-                            .foregroundStyle(Theme.gold)
-                    }
+                        Button("From scratch") { store.rememberLibraryChange(); editing = store.addCustomLook(basedOn: nil) }
+                        Button("Random settings") { store.rememberLibraryChange(); editing = store.addRandomCustomLook() }
+                    } label: { Label("Add style", systemImage: "plus.circle.fill") }
                 }
-
-                Section("Your presets") {
-                    if store.customLooks.isEmpty {
-                        Text("Nothing yet. Make one from a preset, from scratch, or with random settings.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                Section {
+                    ForEach(store.allLooks) { look in
+                        HStack {
+                            Button {
+                                if let custom = store.customLooks.first(where: { $0.lookID == look.id }) { editing = custom.id }
+                                else { store.look = look }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(look.name).foregroundStyle(.primary)
+                                    Text(look.id == "standard" ? "Always available" : (look.id.hasPrefix("custom") ? "Your style · tap to edit" : "Built-in style"))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                            Spacer()
+                            if store.look.id == look.id { Image(systemName: "checkmark").foregroundStyle(Theme.gold) }
+                        }.deleteDisabled(look.id == "standard")
                     }
-
-                    ForEach(store.customLooks) { custom in
-                        Button {
-                            editing = custom.id
-                        } label: {
-                            HStack {
-                                Text(custom.name)
-
-                                Spacer()
-
-                                if store.look.id == custom.lookID {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(Theme.gold)
-                                }
-
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
-                            }
+                    .onDelete { store.deleteStyles($0) }
+                    .onMove { store.moveStyles(from: $0, to: $1) }
+                } header: { Text("Styles") } footer: {
+                    Text("Swipe to remove a style from your camera. Drag its handle in Edit to change the order. Standard stays available. Restore deleted brings removed styles back.")
+                }
+                Section("Shooting presets") {
+                    HStack {
+                        TextField("Preset name", text: $setupName)
+                        Button("Add") { store.rememberLibraryChange(); store.saveShootingPreset(named: setupName); setupName = "" }
+                    }
+                    ForEach(store.shootingPresets) { preset in
+                        HStack {
+                            TextField("Preset name", text: Binding(get: { store.shootingPresets.first(where: { $0.id == preset.id })?.name ?? preset.name }, set: { value in
+                                if let index = store.shootingPresets.firstIndex(where: { $0.id == preset.id }) { store.shootingPresets[index].name = String(value.prefix(48)) }
+                            }))
+                            Button("Use") { store.applyShootingPreset(preset) }.buttonStyle(.borderless).tint(Theme.gold)
                         }
-                        .foregroundStyle(.primary)
                     }
-                    .onDelete { offsets in
-                        store.deleteCustomLooks(at: offsets)
-                    }
+                    .onDelete { store.deleteManagedPresets($0) }
+                    .onMove { store.moveManagedPresets(from: $0, to: $1) }
+                }
+                Section("Restore") {
+                    Button("Undo last library change", systemImage: "arrow.uturn.backward") { store.undoLibraryChange() }.disabled(store.libraryUndo.isEmpty)
+                    Button("Restore deleted styles and presets", systemImage: "arrow.counterclockwise") { store.restoreDeletedLibraryItems() }
+                        .disabled(store.lookLibrary.hidden.isEmpty && store.lookLibrary.deletedLooks.isEmpty && store.lookLibrary.deletedPresets.isEmpty)
+                    Button("Reset styles and presets", role: .destructive) { reset = true }
+                    Text("Reset restores built-in styles and removes custom styles and shooting presets. Photos and videos stay safe. Undo can restore the previous library.").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Presets")
+            .navigationTitle("Styles & presets")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
+                ToolbarItem(placement: .topBarLeading) { EditButton() }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
-            .navigationDestination(item: $editing) { id in
-                CustomLookEditor(store: store, id: id)
+            .sheet(item: Binding(get: { editing.map(EditorID.init) }, set: { editing = $0?.id })) { selection in CustomLookEditor(store: store, id: selection.id) }
+            .confirmationDialog("Reset styles and presets? Photos and videos stay safe.", isPresented: $reset) {
+                Button("Reset styles and presets", role: .destructive) { store.resetStyleLibrary() }
             }
-        }
-        .preferredColorScheme(.dark)
+        }.tint(Theme.gold).preferredColorScheme(.dark)
     }
+    private struct EditorID: Identifiable { let id: UUID }
 }
 
 // MARK: - Make or change a preset
