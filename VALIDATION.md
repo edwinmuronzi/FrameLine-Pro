@@ -55,3 +55,16 @@ Final hands-on checks: new depth photo → Develop photo → blur/separation →
 - Simulator: selection layout inspected using isolated generated sample photographs. The refreshed feature tour includes adaptive HDR, gallery selection/deletion and a seamless 21-feature summary loop. Final Release must be installed without DEBUG diagnostic flags.
 
 User checks: rapidly open/close Gallery in Photo and Dual Shot, open a detail then return to shooting, select/delete expendable items and verify existing Photos copies remain, inspect Delete all confirmation without committing unless intended, and compare HDR/SDR exports when Preserve HDR highlights appears for an HDR original. Also test gallery return after actually backgrounding the app and on the oldest supported phone.
+
+## 1.2.4 candidate — sustained recording work (11 November 2026)
+
+This candidate is not yet the installed production release. Final hardware checks are pending because iOS locked the connected phone and refused further launches.
+
+- Previous 1.2.3 sustained reference: 1654 frames / 60.03 s, about 27.6 fps, nominal → fair thermal status.
+- Bounded GPU completion, user-initiated processing and a short FIFO produced 1795 frames / 60.07 s under serious thermal pressure. With session-owned GPU context reuse and decoupled scope work, a later run produced **1800 matching frames per file / 60.07 s (29.97 fps)**, nominal → fair. Both expected 1080p files decoded and camera input/format/zoom were preserved. Starting temperatures varied, so these runs are not a controlled energy comparison.
+- In that later run, both preview counters reached 1795 frames; the recorded maximum gap was 126 ms including startup. Six queued source samples were dropped inside the measured interval. New diagnostics separate startup from steady preview gaps and report sorted presentation-time cadence and five-second frame counts. Those final longer measurements still require an unlocked phone.
+- GPU-order quality verification passed in the simulator across nine frames, three looks, a LUT/intensity blend, partial style strength, date stamps, both crops and left-edge regions, within one code value of the existing 8-bit resolve. Tests flatten identical transparent edges onto black before difference-blend comparisons; without that, alpha compositing creates false error values. The physical-phone run reached the same one-code difference before the device locked; the full final phone comparison is pending.
+- Direct crop-by-crop grading was slower and was discarded. A precomputed color-table candidate exceeded the accuracy limit and was removed completely. The retained path keeps the original grading functions, spatial effects, crop geometry, output dimensions, codec and bitrate.
+- Remaining checks before promotion: full phone GPU-order comparison, three-minute cadence/thermal run, recording with scopes/loupe, interruption/finalization, rapid stop/start and gallery return. Oldest supported hardware and actual battery energy remain unverified.
+
+Normal production 1.2.3 should remain on the phone until the candidate completes these checks. Diagnostic builds are optimized Release with DEBUG enabled; the final installation must be a normal Release without diagnostic flags.

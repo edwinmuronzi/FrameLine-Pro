@@ -560,8 +560,14 @@ nonisolated enum DateStamp {
 
     private final class Cache: @unchecked Sendable {
         let lock = NSLock()
-        var key = ""
-        var image: CIImage?
+        var second = -Double.infinity
+        var text = ""
+        let formatter: DateFormatter = {
+            let formatter = DateFormatter(); formatter.dateFormat = "''yy  MM  dd"
+            formatter.locale = .autoupdatingCurrent; formatter.timeZone = .autoupdatingCurrent
+            return formatter
+        }()
+        var images: [String: CIImage] = [:]
     }
 
     private static let cache = Cache()
@@ -585,19 +591,17 @@ nonisolated enum DateStamp {
     }
 
     private static func label(shortSide: CGFloat) -> CIImage? {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "''yy  MM  dd"
-
-        let text = formatter.string(from: Date())
+        let date = Date()
         let size = (shortSide * 0.04).rounded()
-        let key = "\(Int(size))|\(text)"
-
         cache.lock.lock()
         defer { cache.lock.unlock() }
-
-        if cache.key == key, let cached = cache.image {
-            return cached
+        let second = floor(date.timeIntervalSinceReferenceDate)
+        if second != cache.second {
+            cache.second = second; cache.text = cache.formatter.string(from: date)
         }
+        let text = cache.text
+        let key = "\(Int(size))|\(text)"
+        if let image = cache.images[key] { return image }
 
         let font = UIFont.monospacedDigitSystemFont(
             ofSize: size,
@@ -650,8 +654,8 @@ nonisolated enum DateStamp {
 
         let output = CIImage(cgImage: cg)
 
-        cache.key = key
-        cache.image = output
+        if cache.images.count >= 8 { cache.images.removeAll(keepingCapacity: true) }
+        cache.images[key] = output
 
         return output
     }

@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreImage
 import ImageIO
+import Metal
 
 // One serial capture queue owns rendering and both writers. Frames are graded
 // before encoding; stopping only finalizes the files, with no export pass.
@@ -22,7 +23,11 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
     private let tracking: ReelTrackingState?
     private let stateLock = NSLock()
     private let onPreview: (@Sendable (CMSampleBuffer, CMSampleBuffer?) -> Void)?
-    private let context = CIContext(options: [.cacheIntermediates: false, .workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
+    private let context: CIContext
+    private let commands: MTLCommandQueue?
+    private let completionQueue: DispatchQueue
+    private var inFlight = 0
+    private var finishCompletion: (@Sendable (Bool) -> Void)?
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     private var pools: [CVPixelBufferPool] = []
     private var formats: [CMVideoFormatDescription?] = []
@@ -32,11 +37,16 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
     private var frames = 0
     #if DEBUG
     private var reportedSource = false
+    private var profile: [[Double]] = []
+    private var rejected = 0
     #endif
 
-    init?(primary: URL, secondary: URL?, recordingID: UUID?, fps: Double,
+    init?(primary: URL, secondary: URL?, recordingID: UUID?, completionQueue: DispatchQueue, resources: MovieRenderResources, fps: Double,
           audioSettings: [String: Any]?, cube: Data?, cubeSize: Int,
           intensity: Float, style: StyleParams, singleSize: CGSize, framing: FramingOptions = FramingOptions(), tracking: ReelTrackingState? = nil, frameCrop: CGRect? = nil, viewRatio: Double = 9.0 / 16.0, codec: String = AVVideoCodecType.hevc.rawValue, bitrate: Int = 16_000_000, usesAnalysisStream: Bool = false, sourceOrientation: CGImagePropertyOrientation = .up, onPreview: (@Sendable (CMSampleBuffer, CMSampleBuffer?) -> Void)? = nil) {
+        self.commands = resources.commands
+        self.completionQueue = completionQueue
+        context = resources.context
         self.primary = primary
         self.secondary = secondary
         self.recordingID = recordingID
@@ -85,14 +95,24 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
         return CGRect(x: extent.minX + x * extent.width, y: extent.minY + (1 - y - rect.height * visibleH) * extent.height, width: rect.width * visibleW * extent.width, height: rect.height * visibleH * extent.height).intersection(extent)
     }
 
+    var isFinishing: Bool {
+        stateLock.lock(); defer { stateLock.unlock() }; return finishing
+    }
+
     func appendVideo(_ sample: CMSampleBuffer) {
         autoreleasepool { renderVideo(sample) }
     }
 
     private func renderVideo(_ sample: CMSampleBuffer) {
         guard !finishing, !failed, let buffer = CMSampleBufferGetImageBuffer(sample) else { return }
-        guard writers.allSatisfy({ $0.canAcceptVideo }) else { return }
+        guard inFlight < 2, writers.allSatisfy({ $0.canAcceptVideo }) else {
+            #if DEBUG
+            rejected += 1
+            #endif
+            return
+        }
         #if DEBUG
+        let began = CACurrentMediaTime()
         if !reportedSource {
             reportedSource = true
             NSLog("LIVE_SOURCE_VERIFY %ldx%ld analysis=%d inputFormat=%u", CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer), usesAnalysisStream ? 1 : 0, CVPixelBufferGetPixelFormatType(buffer))
@@ -110,12 +130,34 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
         let working = workingScale < 1 ? source.transformed(by: CGAffineTransform(scaleX: workingScale, y: workingScale)) : source
         let graded = StyleGrade.grade(working, cube: cube, cubeSize: cubeSize, intensity: intensity, style: style).cropped(to: working.extent)
         let image: CIImage
-        if cube != nil || !style.isIdentity {
-            guard let complete = gradedFrameRenderer.materialize(graded, context: context) else { failed = true; return }
-            image = complete
-        } else { image = graded }
-        var rendered: [CMSampleBuffer] = []
+        var resolvedFrame: CameraFrameRenderer.PendingFrame?
+        var asynchronous = commands != nil
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--sync-live") { asynchronous = false }
+        #endif
         var renderTasks: [CIRenderTask] = []
+        var handedOff = false
+        defer {
+            if !handedOff {
+                // Errors and the non-Metal fallback still retain the source
+                // until any already-issued work has finished.
+                for task in renderTasks { _ = try? task.waitUntilCompleted() }
+                withExtendedLifetime(sample) {}
+            }
+        }
+        if cube != nil || !style.isIdentity {
+            guard let frame = gradedFrameRenderer.beginMaterializing(graded, context: context) else { failed = true; return }
+            resolvedFrame = frame
+            image = frame.image
+            renderTasks.append(frame.task)
+            if !asynchronous {
+                do { _ = try frame.task.waitUntilCompleted() } catch { failed = true; return }
+            }
+        } else { image = graded }
+        #if DEBUG
+        let resolvedAt = CACurrentMediaTime()
+        #endif
+        var rendered: [CMSampleBuffer] = []
         let trackedCenter = tracking?.advance() ?? CGPoint(x: 0.5, y: 0.5)
         for (index, size) in sizes.enumerated() {
             let ratio = size.width / size.height
@@ -146,13 +188,53 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
             guard CMSampleBufferCreateReadyWithImageBuffer(allocator: nil, imageBuffer: destination, formatDescription: format, sampleTiming: &timing, sampleBufferOut: &frame) == noErr, let frame else { failed = true; return }
             rendered.append(frame)
         }
-        // Submit both independent output renders before waiting for the GPU.
-        // The buffers remain retained by their sample buffers until both finish.
-        do { for task in renderTasks { _ = try task.waitUntilCompleted() } }
-        catch { failed = true; return }
-        for (writer, frame) in zip(writers, rendered) { writer.appendVideo(frame) }
-        frames += 1
-        if let first = rendered.first { onPreview?(first, rendered.count > 1 ? rendered[1] : nil) }
+        inFlight += 1
+        #if DEBUG
+        let submittedAt = CACurrentMediaTime()
+        let timings = [began, resolvedAt, submittedAt]
+        #else
+        let timings: [Double] = []
+        #endif
+        if asynchronous, let tail = commands?.makeCommandBuffer() {
+            // Core Image has committed every render to this queue. The tail
+            // completes after the grade and both output crops; it retains all
+            // inputs until that point, including the camera-owned buffer.
+            tail.addCompletedHandler { [self, rendered, renderTasks, resolvedFrame, image, sample] command in
+                completionQueue.async { [self] in
+                    autoreleasepool {
+                        withExtendedLifetime((resolvedFrame, image, sample)) {
+                            completeFrame(rendered, tasks: renderTasks, success: command.status == .completed, timings: timings)
+                        }
+                    }
+                }
+            }
+            handedOff = true
+            tail.commit()
+        } else {
+            handedOff = true
+            completeFrame(rendered, tasks: renderTasks, success: true, timings: timings)
+        }
+    }
+
+    private func completeFrame(_ rendered: [CMSampleBuffer], tasks: [CIRenderTask], success: Bool, timings: [Double]) {
+        var okay = success
+        do { for task in tasks { _ = try task.waitUntilCompleted() } } catch { okay = false }
+        if !okay { failed = true }
+        #if DEBUG
+        let renderedAt = CACurrentMediaTime()
+        #endif
+        if okay, writers.allSatisfy({ $0.canAcceptVideo }) {
+            for (writer, frame) in zip(writers, rendered) { writer.appendVideo(frame) }
+            frames += 1
+            if let first = rendered.first { onPreview?(first, rendered.count > 1 ? rendered[1] : nil) }
+        }
+        #if DEBUG
+        if timings.count == 3, profile.count < 18000 {
+            profile.append([timings[1] - timings[0], timings[2] - timings[1], renderedAt - timings[2], CACurrentMediaTime() - renderedAt])
+        }
+        #endif
+        inFlight -= 1
+        if finishing && inFlight == 0 { finishWriters() }
     }
 
     func appendAudio(_ sample: CMSampleBuffer) {
@@ -166,6 +248,20 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
         guard !finishing else { stateLock.unlock(); return }
         finishing = true
         stateLock.unlock()
+        finishCompletion = completion
+        if inFlight == 0 { finishWriters() }
+    }
+
+    private func finishWriters() {
+        guard let completion = finishCompletion else { return }
+        finishCompletion = nil
+        #if DEBUG
+        if !profile.isEmpty {
+            let means = (0..<4).map { i in profile.reduce(0) { $0 + $1[i] } / Double(profile.count) * 1000 }
+            let totals = profile.map { $0.reduce(0, +) * 1000 }.sorted()
+            NSLog("LIVE_PROFILE resolve/submit/wait/encodeMs=%@ p95=%.2f frames=%ld rejected=%ld async=%d", String(describing: means), totals[min(totals.count - 1, Int(Double(totals.count) * 0.95))], frames, rejected, ProcessInfo.processInfo.arguments.contains("--sync-live") ? 0 : 1)
+        }
+        #endif
         let group = DispatchGroup()
         let result = FinishResult(success: !failed && frames > 0)
         for writer in writers {

@@ -72,3 +72,15 @@ GalleryThumbnails bounds photo/video decoding to two background jobs and caches 
 HDRPhoto expands compatible HDR originals, applies the same recipe/crop/resize to SDR and HDR images, and writes a new adaptive JPEG gain map. Never copy an old gain map onto a newly edited image. Preserve HDR highlights is optional; the live editor preview remains SDR. RAW and already-flattened SDR sources are not promoted to HDR. The viewer requests HDR decoding and high dynamic range on supported displays.
 
 Debug checks: --verify-gallery exercises quick/long dismissals in Photo and Dual Shot, preview mount count, fresh-frame recovery, main-actor heartbeat, selected/all deletion and failed-index rollback using isolated files. --verify-editor-preview also checks actual HDR pixel values, crop size, the SDR opt-out and HDR-aware viewer decoding. --show-gallery --select-gallery previews selection controls without user media.
+
+## 1.2.4 recording pipeline
+
+MovieRenderResources owns one lazily created Metal queue/Core Image context for the camera session. Preview and recordings reuse compiled GPU programs instead of creating a cold context at every Record. LiveMovieWriter keeps at most two GPU frames in flight; it retains each camera sample, resolved pixel buffer and output samples until dependent work completes. A completion barrier returns to the serial writer queue before appending both outputs. Stop waits for admitted GPU frames before finishing either file. The non-Metal/synchronous fallback remains.
+
+The capture-to-writer bridge uses a two-sample bounded FIFO and user-initiated queues to absorb short scheduling spikes, clearing stale samples across stream boundaries. Scopes and loupe rendering have bounded utility work off the camera delivery queue. RGB scope buffers are pooled, and scope readbacks use a separate low-priority context. Scope callbacks hop to MainActor once.
+
+Date stamps cache the formatter and a bounded set of rendered sizes instead of rebuilding the label when preview and recording sizes alternate. Storage polling only publishes changed values. Finishing a writer returns preview rendering to the live camera immediately rather than waiting for file finalization.
+
+The grading functions, spatial effects, output dimensions, codecs and bitrate remain unchanged. Direct per-crop grading and cached color-cube approximations were tested and rejected for performance or fidelity reasons. RenderOrderVerification compares the retained grade/crop path across three looks, LUT/intensity blends, date stamps and both crop edges at the existing 8-bit resolve precision. Flatten alpha before difference-blend comparisons: Porter-Duff compositing otherwise reports a false error on identical partially transparent edges.
+
+Use --verify-render-order for image comparisons; --verify-efficiency --long-soak records three minutes and reports sorted-PTS cadence and five-second frame counts as well as thermal state. Diagnostic arguments and timing arrays are Debug-only. Ship a normal Release build after testing.

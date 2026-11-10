@@ -870,7 +870,7 @@ final class CameraStore {
             if ProcessInfo.processInfo.arguments.contains("--verify-efficiency") {
                 UIApplication.shared.isIdleTimerDisabled = true
                 Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(70))
+                    try? await Task.sleep(for: .seconds(ProcessInfo.processInfo.arguments.contains("--long-soak") ? 190 : 70))
                     UIApplication.shared.isIdleTimerDisabled = false
                 }
             }
@@ -2182,8 +2182,8 @@ final class CameraStore {
 
                 guard !Task.isCancelled, let self else { return }
 
-                storageTotalBytes = figures.total
-                storageFreeBytes = figures.free
+                if storageTotalBytes != figures.total { storageTotalBytes = figures.total }
+                if storageFreeBytes != figures.free { storageFreeBytes = figures.free }
 
                 try? await Task.sleep(for: .seconds(3))
             }

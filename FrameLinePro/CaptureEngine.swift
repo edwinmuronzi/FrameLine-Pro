@@ -319,7 +319,13 @@ nonisolated final class CaptureEngine: NSObject,
     // Exposure aids (histogram, zebras, focus peaking).
     var onAnalysis: (@Sendable (AnalysisFrame) -> Void)?
     private let analysisOutput = AVCaptureVideoDataOutput()
-    private let analysisQueue = DispatchQueue(label: "frameliner.analysis")
+    private let analysisQueue = DispatchQueue(label: "frameliner.analysis", qos: .userInitiated)
+    private let scopesQueue = DispatchQueue(label: "frameline.scopes", qos: .utility)
+    private let auxiliaryLock = NSLock()
+    private var scopesBusy = false
+    private var loupeBusy = false
+    private var scopesRGBPool: CVPixelBufferPool?
+    private var scopesRGBSize = CGSize.zero
     private let aidsLock = NSLock()
     private var aidHistogram = false
     private var aidWaveform = false
@@ -337,7 +343,7 @@ nonisolated final class CaptureEngine: NSObject,
     // Log HEVC recording through an asset writer.
     private let writerVideoOutput = AVCaptureVideoDataOutput()
     private let writerAudioOutput = AVCaptureAudioDataOutput()
-    private let writerQueue = DispatchQueue(label: "frameliner.writer")
+    private let writerQueue = DispatchQueue(label: "frameliner.writer", qos: .userInitiated)
     private let writerLock = NSLock()
     private var activeWriter: LogWriter?
 
@@ -437,11 +443,9 @@ nonisolated final class CaptureEngine: NSObject,
     private var galleryVisible = false
     private var lastLive: LiveValues?
 
-    private lazy var ciContext = CIContext(options: [
-        .cacheIntermediates: false,
-        .workingColorSpace: NSNull(),
-        .outputColorSpace: NSNull()
-    ])
+    private let renderResources = MovieRenderResources()
+    private var ciContext: CIContext { renderResources.context }
+    private lazy var scopesContext = CIContext(options: [.cacheIntermediates: false, .workingColorSpace: NSNull(), .outputColorSpace: NSNull(), .priorityRequestLow: true])
 
     override init() {
         multiCam = AVCaptureMultiCamSession.isMultiCamSupported
@@ -3847,9 +3851,13 @@ nonisolated final class CaptureEngine: NSObject,
 
         if let writer = currentLiveWriter(), writer.usesAnalysisStream {
             writerLock.lock()
+            guard liveWriter === writer else { writerLock.unlock(); return }
             let ready = !liveAnalysisBusy
             if ready { liveAnalysisBusy = true }
-            else { pendingLiveAnalysis = sampleBuffer }
+            else {
+                if pendingLiveAnalysis.count == 2 { pendingLiveAnalysis.removeFirst(); liveQueueDrops += 1 }
+                pendingLiveAnalysis.append(sampleBuffer)
+            }
             writerLock.unlock()
             if ready { renderAnalysisRecording(sampleBuffer, writer: writer) }
         }
@@ -3860,7 +3868,13 @@ nonisolated final class CaptureEngine: NSObject,
 
         if loupeActive, now - lastLoupe >= 0.05 {
             lastLoupe = now
-            renderLoupe(buffer)
+            auxiliaryLock.lock(); let free = !loupeBusy; if free { loupeBusy = true }; auxiliaryLock.unlock()
+            if free {
+                scopesQueue.async { [weak self] in
+                    self?.renderLoupe(buffer)
+                    self?.auxiliaryLock.lock(); self?.loupeBusy = false; self?.auxiliaryLock.unlock()
+                }
+            }
         }
 
         if monitorActive, !usesLivePreview, now - lastMonitor >= 0.02 {
@@ -3886,15 +3900,16 @@ nonisolated final class CaptureEngine: NSObject,
 
         guard histogram || waveform || zebra || peaking || falseColor else { return }
 
-        analyze(
-            buffer,
-            histogram: histogram,
-            waveform: waveform,
-            zebra: zebra,
-            peaking: peaking,
-            falseColor: falseColor,
-            sourceUpright: sourceUpright
-        )
+        auxiliaryLock.lock()
+        guard !scopesBusy else { auxiliaryLock.unlock(); return }
+        scopesBusy = true
+        auxiliaryLock.unlock()
+        let mirror = position == .front
+        scopesQueue.async { [weak self] in
+            guard let self else { return }
+            defer { self.auxiliaryLock.lock(); self.scopesBusy = false; self.auxiliaryLock.unlock() }
+            self.analyze(buffer, histogram: histogram, waveform: waveform, zebra: zebra, peaking: peaking, falseColor: falseColor, sourceUpright: sourceUpright, mirrored: mirror)
+        }
     }
 
     // Samples the luma plane on a coarse grid. Zebras mark near-clipped
@@ -3906,17 +3921,22 @@ nonisolated final class CaptureEngine: NSObject,
         zebra: Bool,
         peaking: Bool,
         falseColor: Bool,
-        sourceUpright: Bool = false
+        sourceUpright: Bool = false,
+        mirrored: Bool = false
     ) {
         if CVPixelBufferGetPlaneCount(buffer) > 0, histogram || waveform {
             let source = CIImage(cvPixelBuffer: buffer)
             let scale = min(1, 320 / source.extent.width)
             let size = CGSize(width: max(2, (Int(source.extent.width * scale) / 2) * 2), height: max(2, (Int(source.extent.height * scale) / 2) * 2))
+            if scopesRGBPool == nil || scopesRGBSize != size {
+                let attributes: [String: Any] = [kCVPixelBufferWidthKey as String: Int(size.width), kCVPixelBufferHeightKey as String: Int(size.height), kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA, kCVPixelBufferIOSurfacePropertiesKey as String: [:], kCVPixelBufferMetalCompatibilityKey as String: true]
+                CVPixelBufferPoolCreate(nil, nil, attributes as CFDictionary, &scopesRGBPool)
+                scopesRGBSize = size
+            }
             var rgb: CVPixelBuffer?
-            let attributes = [kCVPixelBufferIOSurfacePropertiesKey as String: [:]] as CFDictionary
-            if CVPixelBufferCreate(nil, Int(size.width), Int(size.height), kCVPixelFormatType_32BGRA, attributes, &rgb) == kCVReturnSuccess, let rgb {
-                ciContext.render(source.transformed(by: CGAffineTransform(scaleX: scale, y: scale)), to: rgb, bounds: CGRect(origin: .zero, size: size), colorSpace: CGColorSpaceCreateDeviceRGB())
-                analyze(rgb, histogram: histogram, waveform: waveform, zebra: zebra, peaking: peaking, falseColor: falseColor, sourceUpright: sourceUpright)
+            if let pool = scopesRGBPool, CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(nil, pool, [kCVPixelBufferPoolAllocationThresholdKey as String: 2] as CFDictionary, &rgb) == kCVReturnSuccess, let rgb {
+                scopesContext.render(source.transformed(by: CGAffineTransform(scaleX: scale, y: scale)), to: rgb, bounds: CGRect(origin: .zero, size: size), colorSpace: CGColorSpaceCreateDeviceRGB())
+                analyze(rgb, histogram: histogram, waveform: waveform, zebra: zebra, peaking: peaking, falseColor: falseColor, sourceUpright: sourceUpright, mirrored: mirrored)
             }
             return
         }
@@ -4115,7 +4135,7 @@ nonisolated final class CaptureEngine: NSObject,
         }
 
         // Zebra and peaking follow the mirrored front preview too.
-        if wantsImage, !sourceUpright, videoDevice?.position == .front {
+        if wantsImage, !sourceUpright, mirrored {
             for row in 0..<gridH {
                 for column in 0..<(gridW / 2) {
                     let left = (row * gridW + column) * 4
@@ -4200,7 +4220,7 @@ nonisolated final class CaptureEngine: NSObject,
                 let crop = ReelGeometry.crop(in: overlay.extent, ratio: 9.0 / 16, center: reelTrackingState.current)
                 overlay = overlay.cropped(to: crop)
             }
-            image = ciContext.createCGImage(overlay, from: overlay.extent)
+            image = scopesContext.createCGImage(overlay, from: overlay.extent)
         }
 
         let frame = AnalysisFrame(
@@ -4209,11 +4229,8 @@ nonisolated final class CaptureEngine: NSObject,
             waveform: waveImage,
             channels: channels
         )
-        let handler = onAnalysis
-
-        Task { @MainActor in
-            handler?(frame)
-        }
+        // The store's Sendable handler already hops to MainActor.
+        onAnalysis?(frame)
     }
 
     func configureFraming(_ options: FramingOptions, tracking: Bool) {
@@ -4320,7 +4337,8 @@ nonisolated final class CaptureEngine: NSObject,
         let comparing = monitorComparing
         monitorLock.unlock()
         let framing = framingSnapshot()
-        return currentLiveWriter()?.secondary != nil && !comparing && (framing.anamorphic == .off || framing.saveDesqueezed)
+        let writer = currentLiveWriter()
+        return writer?.secondary != nil && writer?.isFinishing == false && !comparing && (framing.anamorphic == .off || framing.saveDesqueezed)
     }
 
     #if DEBUG
@@ -4339,6 +4357,7 @@ nonisolated final class CaptureEngine: NSObject,
         var count = 0
         var last: Double
         var longestGap = 0.0
+        var steadyGap = 0.0
     }
     private var previewProbeActive = false
     private var previewProbeMeters: [PreviewProbeMeter] = []
@@ -4360,6 +4379,7 @@ nonisolated final class CaptureEngine: NSObject,
         guard previewProbeActive else { return }
         let index = layer === monitorLayer ? 0 : 1
         let now = ProcessInfo.processInfo.systemUptime
+        if previewProbeMeters[index].count >= 30 { previewProbeMeters[index].steadyGap = max(previewProbeMeters[index].steadyGap, now - previewProbeMeters[index].last) }
         previewProbeMeters[index].longestGap = max(previewProbeMeters[index].longestGap, now - previewProbeMeters[index].last)
         previewProbeMeters[index].last = now
         previewProbeMeters[index].count += 1
@@ -4379,8 +4399,17 @@ nonisolated final class CaptureEngine: NSObject,
                     let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
                     reader.add(output)
                     guard reader.startReading() else { throw NSError(domain: "Verification", code: 2) }
-                    var count = 0
-                    while output.copyNextSampleBuffer() != nil { count += 1 }
+                    var count = 0, times: [Double] = []
+                    while let sample = output.copyNextSampleBuffer() { count += 1; times.append(CMSampleBufferGetPresentationTimeStamp(sample).seconds) }
+                    times.sort()
+                    let start = times.first ?? 0
+                    var longest = 0.0, buckets: [Int: Int] = [:]
+                    for i in times.indices {
+                        let time = times[i] - start
+                        buckets[Int(time / 5), default: 0] += 1
+                        if i > 0 && time > 1 { longest = max(longest, times[i] - times[i - 1]) }
+                    }
+                    NSLog("FRAME_CADENCE_VERIFY maxGapAfter1sMs=%.1f fiveSecondCounts=%@", longest * 1000, String(describing: buckets.keys.sorted().map { buckets[$0]! }))
                     NSLog("STYLE_FILE_VERIFY %@ size=%@ frames=%ld duration=%.2f valid=%d", url.lastPathComponent, String(describing: size), count, duration, reader.status == .completed && count > 0 ? 1 : 0)
                 } catch { NSLog("STYLE_FILE_VERIFY FAIL %@", error.localizedDescription) }
                 try? FileManager.default.removeItem(at: url)
@@ -4395,8 +4424,8 @@ nonisolated final class CaptureEngine: NSObject,
             self.recordingCube = nil
             let soak = ProcessInfo.processInfo.arguments.contains("--verify-efficiency")
             let interrupt = ProcessInfo.processInfo.arguments.contains("--verify-interruption")
-            let duration = soak ? 60.0 : (ProcessInfo.processInfo.arguments.contains("--verify-throughput") ? 10.0 : 2.0)
-            if soak { NSLog("EFFICIENCY_VERIFY starting 60s, thermal=%ld", ProcessInfo.processInfo.thermalState.rawValue) }
+            let duration = ProcessInfo.processInfo.arguments.contains("--long-soak") ? 180.0 : soak ? 60.0 : (ProcessInfo.processInfo.arguments.contains("--verify-throughput") ? 10.0 : 2.0)
+            if soak { NSLog("EFFICIENCY_VERIFY starting %.0fs, thermal=%ld", duration, ProcessInfo.processInfo.thermalState.rawValue) }
             self.monitorLock.lock()
             let now = ProcessInfo.processInfo.systemUptime
             self.previewProbeMeters = [PreviewProbeMeter(last: now), PreviewProbeMeter(last: now)]
@@ -4436,13 +4465,14 @@ nonisolated final class CaptureEngine: NSObject,
                 let meters = self.previewProbeMeters
                 let sourceFrames = self.sourceProbeMeter.count
                 self.monitorLock.unlock()
-                NSLog("STYLE_SOURCE_VERIFY frames=%ld deviceMinFrameDuration=%.4f", sourceFrames, device.activeVideoMinFrameDuration.seconds)
-                NSLog("STYLE_VERIFY previews frames=%@ gapsMs=%@", String(describing: meters.map { $0.count }), String(describing: meters.map { Int($0.longestGap * 1000) }))
+                self.writerLock.lock(); let dropped = self.liveQueueDrops; self.writerLock.unlock()
+                NSLog("STYLE_SOURCE_VERIFY frames=%ld deviceMinFrameDuration=%.4f queuedDrops=%ld", sourceFrames, device.activeVideoMinFrameDuration.seconds, dropped)
+                NSLog("STYLE_VERIFY previews frames=%@ gapsMs=%@ steadyGapsMs=%@", String(describing: meters.map { $0.count }), String(describing: meters.map { Int($0.longestGap * 1000) }), String(describing: meters.map { Int($0.steadyGap * 1000) }))
                 self.writerQueue.async {
                     writer.finish { success in
                         NSLog("STYLE_VERIFY files=%@", success ? "PASS" : "FAIL")
                         self.queue.async {
-                            self.writerLock.lock(); self.liveWriter = nil; self.writerLock.unlock()
+                            self.writerLock.lock(); self.liveWriter = nil; self.pendingLiveAnalysis.removeAll(keepingCapacity: true); self.liveAnalysisBusy = false; self.writerLock.unlock()
                             self.verificationMovieID = nil
                             if !writer.usesAnalysisStream {
                                 self.session.beginConfiguration()
@@ -4450,8 +4480,7 @@ nonisolated final class CaptureEngine: NSObject,
                                 self.session.commitConfiguration()
                             }
                             self.syncAnalysisOutput()
-                            self.session.stopRunning()
-                            self.startOnQueue()
+                            if !self.session.isRunning { self.startOnQueue() }
                             self.emit(.recording(false))
                             let same = self.videoDevice === device && device.activeFormat === format && abs(device.videoZoomFactor - zoom) < 0.01
                             NSLog("RESUME_VERIFY preserved input/format/zoom=%@", same ? "PASS" : "FAIL")
@@ -4539,15 +4568,16 @@ nonisolated final class CaptureEngine: NSObject,
     }
 
     private var liveAnalysisBusy = false
-    private var pendingLiveAnalysis: CMSampleBuffer?
+    private var pendingLiveAnalysis: [CMSampleBuffer] = []
+    private var liveQueueDrops = 0
 
     private func renderAnalysisRecording(_ sample: CMSampleBuffer, writer: LiveMovieWriter) {
         writerQueue.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.currentLiveWriter() === writer else { return }
             writer.appendVideo(sample)
             self.writerLock.lock()
-            let next = self.pendingLiveAnalysis
-            self.pendingLiveAnalysis = nil
+            guard self.liveWriter === writer else { self.writerLock.unlock(); return }
+            let next = self.pendingLiveAnalysis.isEmpty ? nil : self.pendingLiveAnalysis.removeFirst()
             if next == nil { self.liveAnalysisBusy = false }
             let sameWriter = self.liveWriter === writer
             if !sameWriter { self.liveAnalysisBusy = false }
@@ -4613,7 +4643,7 @@ nonisolated final class CaptureEngine: NSObject,
         }
         let duration = device.activeVideoMinFrameDuration.seconds
         let fps = duration.isFinite && duration > 0 ? 1 / duration : 30
-        guard let writer = LiveMovieWriter(primary: makeURL(prefix: dual ? "Landscape" : "Graded"), secondary: dual ? makeURL(prefix: "Reel") : nil, recordingID: recordingID, fps: fps, audioSettings: audioSettings, cube: recordingCube, cubeSize: recordingCubeSize, intensity: recordingIntensity, style: recordingStyle, singleSize: size, framing: framingSnapshot(), tracking: dual ? reelTrackingState : nil, frameCrop: videoCrop, viewRatio: videoViewRatio, codec: dual ? AVVideoCodecType.hevc.rawValue : codec.rawValue, bitrate: bitrate ?? 24_000_000, usesAnalysisStream: reuseAnalysis,
+        guard let writer = LiveMovieWriter(primary: makeURL(prefix: dual ? "Landscape" : "Graded"), secondary: dual ? makeURL(prefix: "Reel") : nil, recordingID: recordingID, completionQueue: writerQueue, resources: renderResources, fps: fps, audioSettings: audioSettings, cube: recordingCube, cubeSize: recordingCubeSize, intensity: recordingIntensity, style: recordingStyle, singleSize: size, framing: framingSnapshot(), tracking: dual ? reelTrackingState : nil, frameCrop: videoCrop, viewRatio: videoViewRatio, codec: dual ? AVVideoCodecType.hevc.rawValue : codec.rawValue, bitrate: bitrate ?? 24_000_000, usesAnalysisStream: reuseAnalysis,
             sourceOrientation: reuseAnalysis ? (captureAngle() == 0 ? .left : captureAngle() == 180 ? .right : captureAngle() == 270 ? .down : .up) : .up, onPreview: { [weak self] wide, tall in
             guard let self, let tall, self.usesLivePreview, !self.previewSuppressed else { return }
             self.enqueuePreview(tall, on: self.monitorLayer)
@@ -4630,6 +4660,8 @@ nonisolated final class CaptureEngine: NSObject,
         }
         writerLock.lock()
         liveWriter = writer
+        liveAnalysisBusy = false; pendingLiveAnalysis.removeAll(keepingCapacity: true)
+        liveQueueDrops = 0
         writerLock.unlock()
         if !session.isRunning { session.startRunning() }
         applyTorch()
@@ -4649,6 +4681,7 @@ nonisolated final class CaptureEngine: NSObject,
                     guard let self else { return }
                     self.writerLock.lock()
                     self.liveWriter = nil
+                    self.pendingLiveAnalysis.removeAll(keepingCapacity: true); self.liveAnalysisBusy = false
                     self.writerLock.unlock()
                     self.finishingLive = false
                     if !writer.usesAnalysisStream {
