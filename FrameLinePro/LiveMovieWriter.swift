@@ -9,6 +9,7 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
     let primary: URL
     let secondary: URL?
     let recordingID: UUID?
+    let previewIdentifier = UUID()
     let usesAnalysisStream: Bool
     private let sourceOrientation: CGImagePropertyOrientation
     private let writers: [LogWriter]
@@ -94,6 +95,15 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
         let x = (1 - visibleW) / 2 + rect.minX * visibleW
         let y = (1 - visibleH) / 2 + rect.minY * visibleH
         return CGRect(x: extent.minX + x * extent.width, y: extent.minY + (1 - y - rect.height * visibleH) * extent.height, width: rect.width * visibleW * extent.width, height: rect.height * visibleH * extent.height).intersection(extent)
+    }
+
+    // Full-frame single recordings can feed the viewfinder from the same
+    // graded samples. A crop or preview-only transform still needs its own view.
+    func matchesPreview(cube: Data?, size: Int, intensity: Float, style: StyleParams?) -> Bool {
+        frameCrop == nil && framing.anamorphic == .off
+            && self.cube == cube
+            && (cube == nil || (cubeSize == size && self.intensity == intensity))
+            && self.style == (style ?? .identity)
     }
 
     var isFinishing: Bool {
@@ -287,5 +297,38 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
         init(success: Bool) { value = success }
         func record(_ success: Bool) { lock.lock(); value = value && success; lock.unlock() }
         var success: Bool { lock.lock(); defer { lock.unlock() }; return value }
+    }
+}
+
+// Writer-queue-owned. Portrait samples are shared directly; landscape samples
+// need only a small orientation pass, never a second look/LUT evaluation.
+nonisolated final class RecordedPreviewRenderer {
+    private let renderer = CameraFrameRenderer()
+    private var format: CMVideoFormatDescription?
+    private var size = CGSize.zero
+
+    func sample(_ sample: CMSampleBuffer, angle: CGFloat, mirrored: Bool, context: CIContext) -> CMSampleBuffer? {
+        if angle == 90 { return sample }
+        guard let buffer = CMSampleBufferGetImageBuffer(sample) else { return nil }
+        var image = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+        if mirrored { image = image.oriented(.upMirrored) }
+        let orientation: CGImagePropertyOrientation = angle == 0 ? .right : angle == 180 ? .left : .down
+        image = image.oriented(orientation)
+        if mirrored { image = image.oriented(.upMirrored) }
+        let dimensions = ReelGeometry.previewSize(for: image.extent, longSide: 1920)
+        image = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
+            .transformed(by: CGAffineTransform(scaleX: dimensions.width / image.extent.width, y: dimensions.height / image.extent.height))
+        guard let frame = renderer.beginMaterializing(image, context: context) else { return nil }
+        do { _ = try frame.task.waitUntilCompleted() } catch { return nil }
+        if format == nil || size != dimensions {
+            var next: CMVideoFormatDescription?
+            guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: frame.buffer, formatDescriptionOut: &next) == noErr else { return nil }
+            format = next; size = dimensions
+        }
+        guard let format else { return nil }
+        var timing = CMSampleTimingInfo(duration: CMSampleBufferGetDuration(sample), presentationTimeStamp: CMSampleBufferGetPresentationTimeStamp(sample), decodeTimeStamp: .invalid)
+        var result: CMSampleBuffer?
+        guard CMSampleBufferCreateReadyWithImageBuffer(allocator: nil, imageBuffer: frame.buffer, formatDescription: format, sampleTiming: &timing, sampleBufferOut: &result) == noErr else { return nil }
+        return result
     }
 }

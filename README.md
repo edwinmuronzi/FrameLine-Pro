@@ -237,6 +237,8 @@ See [the current comparison with Halide, No Fusion, Moment Pro Camera II and moo
 
 On compatible devices, the full-resolution grading buffer uses lossless compression, with an uncompressed fallback. The grading, source detail and saved-video encoding remain unchanged.
 
+Full-frame Standard video uses native recording. A matching baked look can share its graded frames with the viewfinder instead of rendering the look twice. Heavy 4K looks may still miss 60 fps: use Standard for 4K60, or choose 4K30 when keeping the VHS look.
+
 Recording reuses GPU resources and keeps processing queues bounded so work cannot build an unlimited preview delay. Scopes run separately from camera delivery, and both videos retain the selected grading, resolution and encoding quality. Heavy looks and longer recordings can still drop frames as the phone warms; sustained 30 fps is not guaranteed.
 
 See [validation results and remaining device checks](VALIDATION.md) for the tested scope and sustained thermal limits.

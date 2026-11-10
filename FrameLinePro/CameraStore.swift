@@ -704,6 +704,9 @@ final class CameraStore {
         loadImportedLUTs()
         restorePreserved()
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--verify-single-recording") {
+            mode = .video; dualShot = false; logProfile = .off
+        }
         if ProcessInfo.processInfo.arguments.contains("--verify-live-zoom") || ProcessInfo.processInfo.arguments.contains("--verify-advanced-preview") {
             mode = .video
             dualShot = true
@@ -859,6 +862,7 @@ final class CameraStore {
         refreshRecordingCodecs()
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-pipeline") { verifyPhotoPipeline() }
+        if ProcessInfo.processInfo.arguments.contains("--verify-single-recording") { verifySingleRecording() }
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-burst") { verifyPhotoBurst() }
         if ProcessInfo.processInfo.arguments.contains("--verify-upgrade") { verifyUpgrade() }
         if ProcessInfo.processInfo.arguments.contains("--verify-library") { verifyLibraryAndEdits() }
@@ -2575,13 +2579,19 @@ final class CameraStore {
 
     private func aidsChanged() {
         guard !isShowcase else { return }
-        let defaults = UserDefaults.standard
-
-        defaults.set(showHistogram, forKey: "frameline.aid.hist")
-        defaults.set(showWaveform, forKey: "frameline.aid.wave")
-        defaults.set(showZebra, forKey: "frameline.aid.zebra")
-        defaults.set(showPeaking, forKey: "frameline.aid.peak")
-        defaults.set(showFalseColor, forKey: "frameline.aid.false")
+        #if DEBUG
+        let persist = !ProcessInfo.processInfo.arguments.contains("--verify-single-recording")
+        #else
+        let persist = true
+        #endif
+        if persist {
+            let defaults = UserDefaults.standard
+            defaults.set(showHistogram, forKey: "frameline.aid.hist")
+            defaults.set(showWaveform, forKey: "frameline.aid.wave")
+            defaults.set(showZebra, forKey: "frameline.aid.zebra")
+            defaults.set(showPeaking, forKey: "frameline.aid.peak")
+            defaults.set(showFalseColor, forKey: "frameline.aid.false")
+        }
 
         engine.setAids(
             histogram: showHistogram,
@@ -3318,6 +3328,57 @@ final class CameraStore {
             try? FileManager.default.removeItem(at: testRoot)
             for item in captures.filter({ !initial.contains($0.id) }) { delete(item) }
             NSLog("UPGRADE_VERIFY COMPLETE mainActorTicks=%ld elapsed=%.2f thermal=%ld no Photos writes", ticks, ProcessInfo.processInfo.systemUptime - tickStart, ProcessInfo.processInfo.thermalState.rawValue)
+        }
+    }
+
+    private func verifySingleRecording() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            UIApplication.shared.isIdleTimerDisabled = true
+            let originalHistogram = showHistogram
+            defer { showHistogram = originalHistogram; UIApplication.shared.isIdleTimerDisabled = false }
+            try? await Task.sleep(for: .seconds(2))
+            let codec = RecordingCodec(rawValue: AVVideoCodecType.hevc.rawValue)
+            let native = [("standard", 60), ("standard", 30)]
+            let phases = ProcessInfo.processInfo.arguments.contains("--verify-native-only") ? native : [("vhs", 60), ("vhs", 30)] + native
+            for (lookID, fps) in phases {
+                let thermal = ProcessInfo.processInfo.thermalState
+                guard thermal != .serious, thermal != .critical else {
+                    NSLog("SINGLE_VERIFY stopped before %@ %ld fps: thermal=%ld", lookID, fps, thermal.rawValue)
+                    return
+                }
+                look = FilmLook.lineup.first { $0.id == lookID } ?? .standard
+                selectedLUT = nil
+                if lookID == "standard" { showHistogram = false; histogramData = [] }
+                let settings = RecordingSettings(resolution: RecResolution(width: 3840, height: 2160), frameRate: fps, bitrate: .high)
+                engine.setPreview(video: true, log: .off, settings: settings, codec: codec)
+                engine.discoverRecordingCodecs(log: .off, dual: false, settings: settings, preferredCodec: codec)
+                engine.setVideoCrop(nil, viewRatio: 9.0 / 16)
+                engine.setRecordingGrade(cube: nil, size: 0, intensity: 1, style: styleParams)
+                engine.beginSingleCadenceProbe()
+                NSLog("SINGLE_VERIFY start %@ %ld fps thermal=%ld", lookID, fps, thermal.rawValue)
+                engine.startRecording(log: .off, dual: false, codec: codec, settings: settings, recordingID: UUID())
+                for _ in 0..<120 where !isRecording { try? await Task.sleep(for: .milliseconds(100)) }
+                guard isRecording else {
+                    engine.stopRecording()
+                    NSLog("SINGLE_VERIFY failed to start %@ %ld fps", lookID, fps)
+                    return
+                }
+                if lookID == "standard" {
+                    try? await Task.sleep(for: .seconds(1))
+                    showHistogram = true
+                    try? await Task.sleep(for: .seconds(1))
+                    NSLog("NATIVE_HIST_VERIFY %@ fps=%ld bins=%ld", histogramData.isEmpty ? "FAIL" : "PASS", fps, histogramData.count)
+                    showHistogram = false
+                    try? await Task.sleep(for: .seconds(2))
+                } else { try? await Task.sleep(for: .seconds(4)) }
+                engine.endSingleCadenceProbe(label: "\(lookID) \(fps)fps")
+                engine.stopRecording()
+                for _ in 0..<45 where isRecording { try? await Task.sleep(for: .milliseconds(100)) }
+                guard !isRecording else { NSLog("SINGLE_VERIFY failed to stop %@ %ld fps", lookID, fps); return }
+                try? await Task.sleep(for: .milliseconds(650))
+            }
+            NSLog("SINGLE_VERIFY COMPLETE")
         }
     }
 

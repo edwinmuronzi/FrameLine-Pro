@@ -360,6 +360,11 @@ nonisolated final class CaptureEngine: NSObject,
     private var loupePool: CVPixelBufferPool?
     private var lastLoupe: CFAbsoluteTime = 0
     private let monitorLock = NSLock()
+    private var monitorRevision: UInt64 = 0
+    private var previewMatchRevision: UInt64 = 0
+    private var previewMatchWriter: UUID?
+    private var previewMatchValue = false
+    private let recordedPreviewRenderer = RecordedPreviewRenderer()
     private var monitorCube: Data?
     private var monitorCubeSize = 0
     private var monitorIntensity: Float = 1
@@ -1405,7 +1410,9 @@ nonisolated final class CaptureEngine: NSObject,
                self.previewVideo, self.previewLog == log,
                self.previewSettings?.resolution == settings.resolution,
                self.previewSettings?.frameRate == settings.frameRate,
-               (log == .off || device.activeColorSpace == self.colorSpace(for: log)) {
+               self.matchesResolution(settings.resolution, format: device.activeFormat),
+               (log == .off || device.activeColorSpace == self.colorSpace(for: log)),
+               self.applyRequestedFrameRate(settings.frameRate ?? 30, to: device) {
                 let subtype = CMFormatDescriptionGetMediaSubType(device.activeFormat.formatDescription)
                 let group: FormatGroup = subtype == kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange ? .tenBit422
                     : subtype == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange ? .tenBit420 : .eightBit420
@@ -1740,12 +1747,16 @@ nonisolated final class CaptureEngine: NSObject,
                 self.applyFraming()
             }
 
+            if let device = self.videoDevice {
+                _ = self.applyRequestedFrameRate(settings.frameRate ?? 30, to: device)
+            }
+
             let bitrate = self.targetBitrate(
                 settings.bitrate,
                 codec: selectedCodec
             )
 
-            if dual || log == .off || self.recordingCube != nil || !self.recordingStyle.isIdentity || (self.framingSnapshot().saveDesqueezed && self.framingSnapshot().anamorphic != .off) {
+            if dual || self.videoCrop != nil || self.recordingCube != nil || !self.recordingStyle.isIdentity || (self.framingSnapshot().saveDesqueezed && self.framingSnapshot().anamorphic != .off) {
                 if self.startLiveRecording(dual: dual, recordingID: recordingID, codec: selectedCodec, bitrate: bitrate) {
                     self.emit(.recording(true))
                 } else {
@@ -1830,6 +1841,13 @@ nonisolated final class CaptureEngine: NSObject,
                 """)
             }
 
+            // Keep a small native analysis stream ready so HIST/scopes can
+            // be turned on during hardware recording without reconfiguring it.
+            if !self.dualActive && !self.session.outputs.contains(self.analysisOutput) {
+                self.session.beginConfiguration()
+                self.addAnalysisOutput(force: true)
+                self.session.commitConfiguration()
+            }
             self.rotateConnections()
 
             self.movieOutput.startRecording(
@@ -1913,6 +1931,7 @@ nonisolated final class CaptureEngine: NSObject,
 
             self.emit(.recording(false))
             self.finishMovies()
+            self.syncAnalysisOutput()
         }
     }
 
@@ -2954,6 +2973,37 @@ nonisolated final class CaptureEngine: NSObject,
         return sorted.first
     }
 
+    private func matchesResolution(_ resolution: RecResolution?, format: AVCaptureDevice.Format) -> Bool {
+        guard let resolution else { return true }
+        let size = format.formatDescription.dimensions
+        return Int(size.width) == resolution.width && Int(size.height) == resolution.height
+    }
+
+    private func applyRequestedFrameRate(_ fps: Int, to device: AVCaptureDevice) -> Bool {
+        guard Self.formatSupports(device.activeFormat, frameRate: fps) else { return false }
+        let duration = CMTime(value: 1, timescale: CMTimeScale(fps))
+        if CMTimeCompare(device.activeVideoMinFrameDuration, duration) == 0,
+           CMTimeCompare(device.activeVideoMaxFrameDuration, duration) == 0 { return true }
+        var applied = false
+        lock(device) {
+            setLockedFrameDuration(duration, on: device)
+            applied = true
+        }
+        return applied
+    }
+
+    // Keep min <= max throughout a 60 ↔ 30 change on the same format.
+    private func setLockedFrameDuration(_ duration: CMTime, on device: AVCaptureDevice) {
+        if device.activeVideoMaxFrameDuration.isNumeric,
+           CMTimeCompare(duration, device.activeVideoMaxFrameDuration) > 0 {
+            device.activeVideoMaxFrameDuration = duration
+            device.activeVideoMinFrameDuration = duration
+        } else {
+            device.activeVideoMinFrameDuration = duration
+            device.activeVideoMaxFrameDuration = duration
+        }
+    }
+
     private func activate(
         _ format: AVCaptureDevice.Format,
         fps: Int?,
@@ -2987,8 +3037,7 @@ nonisolated final class CaptureEngine: NSObject,
                     timescale: CMTimeScale(fps)
                 )
 
-                device.activeVideoMinFrameDuration = duration
-                device.activeVideoMaxFrameDuration = duration
+                setLockedFrameDuration(duration, on: device)
             }
 
             device.unlockForConfiguration()
@@ -3733,16 +3782,17 @@ nonisolated final class CaptureEngine: NSObject,
         }
     }
 
-    private var aidsWanted: Bool {
+    private var scopesWanted: Bool {
         aidsLock.lock()
         defer { aidsLock.unlock() }
-
-        return aidHistogram || aidWaveform || aidZebra || aidPeaking || aidFalseColor || monitorActive || loupeActive
+        return aidHistogram || aidWaveform || aidZebra || aidPeaking || aidFalseColor
     }
 
+    private var aidsWanted: Bool { scopesWanted || monitorActive || loupeActive }
+
     // Call inside a configuration block.
-    private func addAnalysisOutput() {
-        guard aidsWanted,
+    private func addAnalysisOutput(force: Bool = false) {
+        guard force || aidsWanted,
               dualActive == false,
               session.outputs.contains(analysisOutput) == false else {
             return
@@ -3819,7 +3869,9 @@ nonisolated final class CaptureEngine: NSObject,
 
             // While recording, the monitor is fed from these same frames, so
             // the camera only has to deliver one 4K stream.
-            if aidsWanted, !previewSuppressed,
+            let needsMonitor = monitorActive && !usesLivePreview
+            let needsScopes = scopesWanted
+            if (needsMonitor || needsScopes), !previewSuppressed,
                let frame = CMSampleBufferGetImageBuffer(sampleBuffer) {
                 let now = CFAbsoluteTimeGetCurrent()
 
@@ -3835,12 +3887,11 @@ nonisolated final class CaptureEngine: NSObject,
 
                 if free {
                     analysisQueue.async { [weak self] in
-                        if self?.usesLivePreview == false { self?.renderMonitor(frame) }
-                        self?.analyzeIfNeeded(frame, sourceUpright: true)
-
-                        self?.monitorLock.lock()
-                        self?.monitorBusy = false
-                        self?.monitorLock.unlock()
+                        guard let self else { return }
+                        defer { self.monitorLock.lock(); self.monitorBusy = false; self.monitorLock.unlock() }
+                        guard !self.previewSuppressed else { return }
+                        if needsMonitor, !self.usesLivePreview { self.renderMonitor(frame) }
+                        if needsScopes { self.analyzeIfNeeded(frame, sourceUpright: true) }
                     }
                 }
             }
@@ -4344,15 +4395,52 @@ nonisolated final class CaptureEngine: NSObject,
     }
 
     private var usesLivePreview: Bool {
+        guard let writer = currentLiveWriter(), !writer.isFinishing else { return false }
         monitorLock.lock()
         let comparing = monitorComparing
+        let revision = monitorRevision
+        let known = previewMatchWriter == writer.previewIdentifier && previewMatchRevision == revision
+        let cached = previewMatchValue
+        let cube = monitorCube, cubeSize = monitorCubeSize, intensity = monitorIntensity
+        let style = monitorStyle
         monitorLock.unlock()
         let framing = framingSnapshot()
-        let writer = currentLiveWriter()
-        return writer?.secondary != nil && writer?.isFinishing == false && !comparing && (framing.anamorphic == .off || framing.saveDesqueezed)
+        guard !comparing && (framing.anamorphic == .off || framing.saveDesqueezed) else { return false }
+        if writer.secondary != nil { return true }
+        guard framing.anamorphic == .off else { return false }
+        if known { return cached }
+        let matches = writer.matchesPreview(cube: cube, size: cubeSize, intensity: intensity, style: style)
+        monitorLock.lock()
+        if monitorRevision == revision {
+            previewMatchWriter = writer.previewIdentifier; previewMatchRevision = revision; previewMatchValue = matches
+        }
+        monitorLock.unlock()
+        return matches
     }
 
     #if DEBUG
+    func beginSingleCadenceProbe() {
+        monitorLock.lock()
+        let now = ProcessInfo.processInfo.systemUptime
+        previewProbeMeters = [PreviewProbeMeter(last: now), PreviewProbeMeter(last: now)]
+        sourceProbeMeter = PreviewProbeMeter(last: now)
+        previewProbeActive = true
+        monitorLock.unlock()
+    }
+
+    func endSingleCadenceProbe(label: String) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.monitorLock.lock()
+            self.previewProbeActive = false
+            let preview = self.previewProbeMeters.first, source = self.sourceProbeMeter.count
+            self.monitorLock.unlock()
+            NSLog("SINGLE_CADENCE_VERIFY %@ min=%.4f max=%.4f source=%ld preview=%ld steadyGapMs=%.1f shared=%d native=%d thermal=%ld", label,
+                  self.videoDevice?.activeVideoMinFrameDuration.seconds ?? -1, self.videoDevice?.activeVideoMaxFrameDuration.seconds ?? -1,
+                  source, preview?.count ?? 0, (preview?.steadyGap ?? 0) * 1000, self.usesLivePreview ? 1 : 0, self.movieOutput.isRecording ? 1 : 0, ProcessInfo.processInfo.thermalState.rawValue)
+        }
+    }
+
     func galleryResumeProbe() async -> (Bool, Double) {
         await withCheckedContinuation { continuation in
             queue.async { [weak self] in
@@ -4624,7 +4712,13 @@ nonisolated final class CaptureEngine: NSObject,
         if !reuseAnalysis {
             session.beginConfiguration()
             if session.outputs.contains(analysisOutput) { session.removeOutput(analysisOutput) }
-            writerVideoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+            let nativeFormat = CMFormatDescriptionGetMediaSubType(device.activeFormat.formatDescription)
+            let preferredFormats: [OSType] = Self.formatGroup(of: device.activeFormat) == .eightBit420
+                ? [kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, nativeFormat] : [nativeFormat]
+            let offered = writerVideoOutput.availableVideoPixelFormatTypes
+            let pixelFormat = preferredFormats.first { offered.contains($0) && Self.formatGroup(of: device.activeFormat) != nil }
+                ?? kCVPixelFormatType_32BGRA
+            writerVideoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: pixelFormat]
             if dual {
                 // The two delivered files are 1080p. Ask the camera scaler for
                 // a matching stream rather than grading a 12 MP photo stream.
@@ -4636,7 +4730,7 @@ nonisolated final class CaptureEngine: NSObject,
                 let unitW = width / divisor * 2, unitH = height / divisor * 2
                 let steps = min(divisor / 2, max(1, Int(ceil(1920.0 / Double(unitW)))))
                 writerVideoOutput.videoSettings = [
-                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                    kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
                     kCVPixelBufferWidthKey as String: unitW * steps,
                     kCVPixelBufferHeightKey as String: unitH * steps
                 ]
@@ -4671,11 +4765,17 @@ nonisolated final class CaptureEngine: NSObject,
         }
         let duration = device.activeVideoMinFrameDuration.seconds
         let fps = duration.isFinite && duration > 0 ? 1 / duration : 30
+        let previewAngle = captureAngle()
+        let previewMirrored = position == .front
         guard let writer = LiveMovieWriter(primary: makeURL(prefix: dual ? "Landscape" : "Graded"), secondary: dual ? makeURL(prefix: "Reel") : nil, recordingID: recordingID, completionQueue: writerQueue, resources: renderResources, fps: fps, audioSettings: audioSettings, cube: recordingCube, cubeSize: recordingCubeSize, intensity: recordingIntensity, style: recordingStyle, singleSize: size, framing: framingSnapshot(), tracking: dual ? reelTrackingState : nil, frameCrop: videoCrop, viewRatio: videoViewRatio, codec: dual ? AVVideoCodecType.hevc.rawValue : codec.rawValue, bitrate: bitrate ?? 24_000_000, usesAnalysisStream: reuseAnalysis,
             sourceOrientation: reuseAnalysis && position == .front ? .upMirrored : .up, onPreview: { [weak self] wide, tall in
-            guard let self, let tall, self.usesLivePreview, !self.previewSuppressed else { return }
-            self.enqueuePreview(tall, on: self.monitorLayer)
-            self.enqueuePreview(wide, on: self.landscapeMonitorLayer)
+            guard let self, self.usesLivePreview, !self.previewSuppressed else { return }
+            if let tall {
+                self.enqueuePreview(tall, on: self.monitorLayer)
+                self.enqueuePreview(wide, on: self.landscapeMonitorLayer)
+            } else if let preview = self.recordedPreviewRenderer.sample(wide, angle: previewAngle, mirrored: previewMirrored, context: self.ciContext) {
+                self.enqueuePreview(preview, on: self.monitorLayer)
+            }
             self.monitorLock.lock()
             self.lastMonitorEnqueue = CFAbsoluteTimeGetCurrent()
             self.monitorLock.unlock()
@@ -5209,6 +5309,7 @@ nonisolated final class CaptureEngine: NSObject,
     // while the file keeps recording flat.
     func setMonitor(cube: Data?, size: Int, intensity: Float) {
         monitorLock.lock()
+        monitorRevision &+= 1
         monitorCube = cube
         monitorCubeSize = size
         monitorIntensity = intensity
@@ -5227,6 +5328,7 @@ nonisolated final class CaptureEngine: NSObject,
     // A camera style shown live in the viewfinder, with or without a LUT.
     func setStyle(_ style: StyleParams?) {
         monitorLock.lock()
+        monitorRevision &+= 1
         monitorStyle = (style?.isIdentity == true) ? nil : style
         let idle = monitorCube == nil && monitorStyle == nil
         monitorLock.unlock()
@@ -5712,6 +5814,11 @@ nonisolated final class CaptureEngine: NSObject,
 
     private func emit(_ event: EngineEvent) {
         #if DEBUG
+        if case .movie(let primary, let secondary, _, _, _) = event,
+           ProcessInfo.processInfo.arguments.contains("--verify-single-recording") {
+            verifyTemporaryMovies([primary] + [secondary].compactMap { $0 })
+            return
+        }
         if case .movie(let primary, let secondary, _, let id, _) = event,
            let verificationMovieID, id == verificationMovieID {
             self.verificationMovieID = nil

@@ -1,6 +1,7 @@
 #if DEBUG
 import SwiftUI
 import CoreImage
+import AVFoundation
 import Metal
 
 struct RenderOrderVerification: View {
@@ -21,6 +22,37 @@ struct RenderOrderVerification: View {
         var values: [Float] = []
         for b in 0..<17 { for g in 0..<17 { for r in 0..<17 { values += [Float(r)/16 * 0.96 + 0.02, Float(g)/16, Float(b)/16 * 0.94 + 0.03, 1] } } }
         let cube = values.withUnsafeBytes { Data($0) }
+        // Check the cheap shared-recording preview against portrait geometry,
+        // including mirroring at all four fixed recording angles.
+        guard let baseFrame = resolver.beginMaterializing(original.transformed(by: CGAffineTransform(scaleX: 64.0 / 1920, y: 64.0 / 1920)), context: context) else { return false }
+        do { _ = try baseFrame.task.waitUntilCompleted() } catch { return false }
+        defer { withExtendedLifetime(baseFrame.buffer) {} }
+        let preview = RecordedPreviewRenderer()
+        for angle: CGFloat in [90, 0, 180, 270] {
+            for mirrored in [false, true] {
+                let orientation: CGImagePropertyOrientation = angle == 0 ? .left : angle == 180 ? .right : angle == 270 ? .down : .up
+                var fileImage = baseFrame.image.oriented(orientation)
+                if mirrored { fileImage = fileImage.oriented(.upMirrored) }
+                guard let fileFrame = resolver.beginMaterializing(fileImage, context: context) else { return false }
+                do { _ = try fileFrame.task.waitUntilCompleted() } catch { return false }
+                var format: CMVideoFormatDescription?
+                guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: fileFrame.buffer, formatDescriptionOut: &format) == noErr, let format else { return false }
+                var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: 60), presentationTimeStamp: .zero, decodeTimeStamp: .invalid)
+                var sample: CMSampleBuffer?
+                guard CMSampleBufferCreateReadyWithImageBuffer(allocator: nil, imageBuffer: fileFrame.buffer, formatDescription: format, sampleTiming: &timing, sampleBufferOut: &sample) == noErr, let sample,
+                      let shown = preview.sample(sample, angle: angle, mirrored: mirrored, context: context), let buffer = CMSampleBufferGetImageBuffer(shown) else { return false }
+                let actual = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()])
+                let expected = mirrored ? baseFrame.image.oriented(.upMirrored) : baseFrame.image
+                guard actual.extent.size == expected.extent.size else { return false }
+                let difference = actual.applyingFilter("CIDifferenceBlendMode", parameters: ["inputBackgroundImage": expected])
+                let maximum = difference.applyingFilter("CIAreaMaximum", parameters: ["inputExtent": CIVector(cgRect: expected.extent)])
+                var pixel: [Float] = [0,0,0,0]
+                context.render(maximum, toBitmap: &pixel, rowBytes: 16, bounds: CGRect(x: 0,y: 0,width: 1,height: 1), format: .RGBAf, colorSpace: nil)
+                let error = max(pixel[0],pixel[1],pixel[2])
+                NSLog("RECORDED_PREVIEW_VERIFY angle=%.0f mirrored=%d error=%.6f", angle, mirrored ? 1 : 0, error)
+                guard error < 1.0 / 255 + 0.000001 else { return false }
+            }
+        }
         let fallback = CameraFrameRenderer(preferLossless: true)
         fallback.forceUnsupportedLosslessFormat = true
         for width in [64, 128] {
