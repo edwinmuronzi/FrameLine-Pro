@@ -31,12 +31,13 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     private var pools: [CVPixelBufferPool] = []
     private var formats: [CMVideoFormatDescription?] = []
-    private let gradedFrameRenderer = CameraFrameRenderer()
+    private let gradedFrameRenderer = CameraFrameRenderer(preferLossless: true)
     private var finishing = false
     private var failed = false
     private var frames = 0
     #if DEBUG
     private var reportedSource = false
+    private var reportedIntermediate = false
     private var profile: [[Double]] = []
     private var rejected = 0
     #endif
@@ -147,6 +148,12 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
         }
         if cube != nil || !style.isIdentity {
             guard let frame = gradedFrameRenderer.beginMaterializing(graded, context: context) else { failed = true; return }
+            #if DEBUG
+            if !reportedIntermediate {
+                reportedIntermediate = true
+                NSLog("LIVE_INTERMEDIATE_VERIFY pixelFormat=%u lossless=%d", CVPixelBufferGetPixelFormatType(frame.buffer), CVPixelBufferGetPixelFormatType(frame.buffer) == kCVPixelFormatType_Lossless_32BGRA ? 1 : 0)
+            }
+            #endif
             resolvedFrame = frame
             image = frame.image
             renderTasks.append(frame.task)

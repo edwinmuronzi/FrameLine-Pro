@@ -86,3 +86,9 @@ The grading functions, spatial effects, output dimensions, codecs and bitrate re
 Use --verify-render-order for image comparisons; --verify-efficiency --long-soak records three minutes and reports sorted-PTS cadence and five-second frame counts as well as thermal state. Diagnostic arguments and timing arrays are Debug-only. Ship a normal Release build after testing.
 
 Dual Shot orientation invariant: analysis frames are portrait (connection angle 90); never apply deviceAngle/lastAngle a second time to idle dual crops or the analysis-backed live writer. Front analysis is mirrored once. The fallback writer connection is also portrait and uses exact native-aspect even dimensions. Device-angle rotation is retained for single-output captures. `--verify-styled-recording --rotate-dual` exercises four starts and finalization cycles without saving to Photos. Keep the two-frame GPU limit and cacheIntermediates=false; caching/deeper-queue trials did not establish a sustained-rate benefit.
+
+## 1.2.7 lossless grading intermediate
+
+LiveMovieWriter requests lossless BGRA for its full-resolution resolved grade; source capture, style math, dimensions, LUTs, spatial effects, final NV12 outputs and encoding are unchanged. CameraFrameRenderer verifies the first compressed render before publishing it. Pool creation/allocation or render failure retries the same graph using ordinary BGRA, then keeps that fallback for the renderer. Other renderer owners retain uncompressed defaults. No changes to the warm-session gallery path or portrait Dual Shot orientation.
+
+`--verify-render-order` compares actual compressed and uncompressed buffers across all built-in looks, extreme exposures, LUT/strength/stamp variants, both crops and edges. It asserts exact equality, checks injected unsupported-format allocation and resize fallback, then runs a 64-render alternating benchmark with the first eight excluded. Instrumentation and injection are DEBUG-only.

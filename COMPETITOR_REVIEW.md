@@ -26,3 +26,9 @@ FrameLine already combines video, simultaneous landscape/reel output, rangefinde
 4. Slow-shutter/light-trails capture, launch-to-preset controls, then batch editing/export and portable preset files.
 
 Avoid claiming zero heat, identical performance on every phone, or a proprietary competitor pipeline that FrameLine does not implement. Use VALIDATION.md for the measured scope of each release.
+
+## Implementation status — 11 November 2026
+
+The competitor-inspired work is not all finished. Shipped additions include viewfinder A/B focus pulls, Natural RAW, Live Photo/depth capture, retained originals and edit recipes, crop/straighten/output sizing, adjustable retained-depth blur/separation, compatible-source adaptive HDR export, style/preset management, anamorphic framing and Lock Screen capture.
+
+Still open: Moment-style slow shutter/light trails and launch-to-preset controls; broader RAW/HDR/depth format combinations and depth-aware export; more extensive natural/film and highlight-aware rendering calibration; batch editing/export and portable preset files. Native editable Apple Portrait assets and a proprietary HEIF+ equivalent are not implemented. Sustained 30 fps and older-device/energy validation also remain open. Lossless working-buffer support improves the memory architecture while retaining the grade; it does not establish feature parity or unlimited thermal performance.
