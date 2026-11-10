@@ -25,7 +25,7 @@ A creative camera for iPhone: natural photography, expressive video, and a range
    ```
 3. Open **FrameLinePro.xcodeproj** in Xcode. Select the **MyApp** scheme.
 4. In **Xcode → Settings → Accounts**, add your own Apple Account. Keep your credentials private.
-5. Select the **FrameLinePro** target, open **Signing & Capabilities**, enable automatic signing, and select **your Personal Team**. Change the bundle identifier to a unique value you control, for example `com.yourname.FrameLinePro`.
+5. Select the **FrameLinePro** target, open **Signing & Capabilities**, enable automatic signing, and select **your Personal Team**. Change the bundle identifier to a unique value you control, for example `com.yourname.FrameLinePro`. Select your team for **LockCapture** and **CameraControlWidget** too; give those targets matching prefixes and unique suffixes, such as `com.yourname.FrameLinePro.LockCapture` and `com.yourname.FrameLinePro.CameraControlWidget`.
 6. Connect your iPhone, unlock it, and trust the Mac if asked. The phone must run **iOS 26 or newer**.
 7. Select the phone as the run destination and press **Run (⌘R)**. If iOS asks, enable **Developer Mode** under Settings → Privacy & Security, restart, and confirm. Follow any developer-trust prompt shown by iOS.
 8. Open FrameLinePro, explore or skip the feature tour, then allow camera access. Microphone access is needed for sound in videos; Photos access is needed to save into your library.
@@ -38,6 +38,63 @@ Public distribution is the next publishing step, **not currently enabled**. The 
 
 When available, this section will contain the real TestFlight/App Store link. See [Apple’s distribution guide](https://developer.apple.com/documentation/xcode/distributing-your-app-for-beta-testing-and-releases/) and [external TestFlight instructions](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers).
 
+## New in 1.2
+
+### Photo capture: choose the result you want
+
+Open **Fn → Shooting tools → Photo capture**. Standard, Natural RAW, Live Photo and depth portrait are alternative capture modes, not switches that promise every combination at once.
+
+- **Standard:** the quickest everyday HEIF/JPEG path, with optional RAW and looks.
+- **Natural RAW:** develops a single native Bayer RAW with sharpening, noise reduction and local tone mapping turned down, retaining the DNG. This gives you more control over texture. It can be grainier, and bright skies or dark scenes may be harder to recover. It uses a supported physical rear camera; it is not ProRAW-based HEIF+ and does not claim to reproduce another app’s proprietary processing. The live preview is a framing/color preview, not an exact preview of the later RAW development.
+- **Live Photo:** keeps a short moment of movement with the still and saves one paired Live Photo to Photos. It preserves the original full frame and metadata; baked looks/LUTs and framing crops are excluded. In-app sharing of the motion component sends a separate movie. Microphone availability and permissions affect sound.
+- **Depth portrait:** uses a supported camera’s distance map to soften the background while preserving the original. It is a rendered image, not Apple’s editable Portrait mode. Hair, glass and complex edges can be imperfect. An unsupported lens retains the original and explains what happened.
+
+The format pill identifies Natural RAW, Live Photo or Depth when active. Supported RAW, Live and depth combinations depend on the actual lens, format and capture session. For the fastest repeated stills, use Standard HEIF with these extras off.
+
+### Focus pulls without leaving the viewfinder
+
+A **focus pull** moves sharpness from one subject to another while filming—for example, from a cup in front to a person behind it.
+
+1. In **Video**, tap the focus-target icon beside the eye button under HIST, or choose **Fn → Shooting tools → Focus pulls → Set A and B in the viewfinder**.
+2. Tap the first subject to save **A**, then the second to save **B**. The app waits for autofocus to settle without changing exposure.
+3. Tap A or B to move smoothly to that distance. Choose the time from the duration control, or move the slider for manual control.
+4. Set marks before recording. The setup uses a fixed physical rear lens; unsupported lenses explain the limitation. Close the strip to return to autofocus.
+
+A/B marks remember focus distances. They do **not** track a person who moves closer or farther away. Focus peaking and magnification can help you check the result.
+
+### A gallery you can return to
+
+Captures, original files and edit recipes stay in the app after closing it. Open a photo and choose **Develop photo** to change the look, brightness, color strength or warmth. The full-resolution original is retained; edits are separate. When a full-frame original and RAW are available, enable **Develop from RAW** to adjust exposure in the digital negative before rendering. A smaller draft preview keeps editing responsive; the saved edit uses the full RAW. Frame-only captures can still be edited from their original crop and their DNG shared separately. Reopen Develop photo to revise the saved recipe, or switch to Original in the viewer. Sharing sends the displayed version at full resolution. Saving an edit does not silently overwrite the copy already in Photos.
+
+The gallery is local to this installation, not an online backup. Deleting a capture removes its app files; copies already saved to Photos remain there. Locked-screen captures transfer into the app gallery after unlocking; export/share them from there when needed.
+
+### Your shortcuts, within reach
+
+Use **Fn → Shooting tools → Viewfinder shortcuts** to choose the three buttons above the zoom ruler. Available choices include countdown, timelapse, magnifier, histogram, looks, manual controls, gallery and focus pulls. Picking a duplicate swaps its old position so the row stays clean. Reset restores the original arrangement.
+
+### Lock Screen camera
+
+Long-press your Lock Screen, choose **Customize**, replace a bottom control and select **FrameLine camera**. You can also add its control in Control Center. The locked camera is a separate, simple photo experience: it cannot browse your gallery or expose previous images. Tap its open-app button to authenticate and open the full app. After unlocking, new photos are imported into FrameLinePro’s gallery. Camera permission must be granted; the system controls authentication and extension availability.
+
+### Plain-English camera guide
+
+**Fn → Shooting tools → Camera guide** explains the tools without assuming camera knowledge. For quick reference:
+
+| Control | What it does |
+| --- | --- |
+| EV / brightness | Makes automatic exposure lighter or darker. |
+| ISO | Raises sensitivity to brighten the image, often adding noise. |
+| Shutter | Changes how long each frame gathers light; slower speeds blur motion. |
+| White balance | Keeps whites neutral or deliberately warmer/cooler. |
+| Focus / A–B pull | Chooses which distance appears sharp. |
+| LUT / Bake | A saved color transformation; Bake writes it into the output. |
+| Histogram / waveform | Shows the distribution or position of brightness, helping spot clipped highlights. |
+| Zebra | Stripes areas above a brightness threshold. |
+| Peaking | Outlines sharp edges to help judge focus. |
+| False color | Replaces the scene’s colors with a brightness guide. |
+| RAW | Sensor-oriented data with room for later development; larger and slower than ordinary photos. |
+| Depth portrait | Softens the background using measured distance information. |
+
 ## Three ways to make an image
 
 ### Photo — natural detail, personal color
@@ -46,7 +103,7 @@ When available, this section will contain the real TestFlight/App Store link. Se
 - Repeated shutter presses use independent capture requests. Grading and thumbnail creation happen away from the interface, with bounded processing to protect memory.
 - Automatic exposure when you want simplicity; manual controls when you need precision.
 - Live camera styles, custom look recipes, and optional LUT baking.
-- Full-frame, framed crop, or both; full-resolution files remain available from the session gallery.
+- Full-frame, framed crop, or both; full-resolution files remain available from the gallery.
 - Countdown, exposure bracketing, still timelapse, grid, level and focus magnifier.
 
 HEIF Max, RAW, flash, low-light processing and bracketing take longer than ordinary stills. Responsive/zero-shutter-lag capture is enabled only where supported; timing remains dependent on the camera, format and light. There is no claim of unlimited full-resolution burst capture.
@@ -85,16 +142,16 @@ Dual Shot is two crops of one source, not two independently pointed cameras. It 
 
 **LUTs** are imported `.cube` color transforms. Use the **LUT** pill to select a transform and adjust its mix. Preview and baking are independent: seeing a LUT in the viewfinder does not, by itself, mean it will be written into a file. The LUT pill is yellow when baking is active and white otherwise. Hold/tap A/B to compare against the original preview.
 
-**Shooting presets** remember a setup, including format, exposure, white balance, focus, lens/zoom, style/LUT, Dual Shot, framing and audio choices. Use **LUT → Save Preset** or **Fn → Shooting tools → Shooting presets**. The selected preset is yellow. Changing its setup clears the selection; automatic exposure/focus readings do not. Apply presets between recordings. A referenced custom look or LUT must still be available.
+**Shooting presets** remember a setup, including format, exposure, white balance, focus, lens/zoom, style/LUT, Dual Shot, framing and audio choices. Use **LUT → Save Preset** or **Fn → Shooting tools → Shooting presets**. The selected preset is yellow. Changing its setup clears the selection; automatic exposure/focus readings do not. Photo capture modes are included in saved presets. Apply presets between recordings. A referenced custom look or LUT must still be available.
 
 ### What saves
 
 - Stills without a look/baked LUT save the plain output(s) you selected.
-- With a look or baked LUT, the graded selected output(s) save to Photos; originals remain available in the app’s session gallery.
+- With a look or baked LUT, the graded selected output(s) save to Photos; originals remain available in the app’s gallery.
 - Identical full-frame/crop outputs are not intentionally duplicated.
 - RAW capture also preserves a separate DNG where supported.
 - Dual Shot saves the final two-video pair described above.
-- The session gallery keeps small previews in memory and opens larger previews from files when needed. Share uses full-resolution files. Save important work to Photos or export it; the session gallery is not a cloud backup.
+- The gallery and edit recipes persist between launches. Previews load from files as needed; recent in-memory previews are bounded. Share uses full-resolution files. App deletion removes its local gallery, so save important work to Photos or export it; this is not a cloud backup.
 
 ## Tools that stay out of the way
 
@@ -116,7 +173,7 @@ Lens stops, stabilization, torch, RAW, Log, ProRes, manual focus and audio route
 
 ## First launch and everyday use
 
-The ten-page introduction showcases photography, video, Dual Shot, live looks, rangefinder composition, manual controls, exposure aids and shooting tools. It is skippable and replayable, uses frosted native glass, respects reduced-motion preferences for its transitions, and keeps the live camera off until you enter the camera.
+The fifteen-page introduction showcases photography, video, Dual Shot, live looks, rangefinder composition, manual controls, exposure aids shooting tools, Natural RAW, Live Photo/depth portrait, re-editable originals, viewfinder focus pulls and locked capture. It is skippable and replayable, uses frosted native glass, respects reduced-motion preferences for its transitions, and keeps the live camera off until you enter the camera.
 
 - Tap the bare viewfinder to focus; hold to lock exposure/focus.
 - Drag vertically to adjust exposure.

@@ -7,6 +7,11 @@ struct ShootingToolsSheet: View {
         NavigationStack {
             Form {
                 Section {
+                    NavigationLink { FeatureGuide() } label: { Label("Camera guide · plain English", systemImage: "questionmark.circle") }
+                    NavigationLink { PhotoFeaturesView(store: store) } label: { Label("Photo capture", systemImage: "camera") }
+                    NavigationLink { ShortcutSettings(store: store) } label: { Label("Viewfinder shortcuts", systemImage: "rectangle.3.group") }
+                }
+                Section {
                     NavigationLink { ShootingPresetsView(store: store) } label: {
                         Label("Shooting presets", systemImage: "square.stack.3d.up")
                     }
@@ -121,6 +126,14 @@ private struct FocusPullToolsView: View {
     var onRun: () -> Void
     var body: some View {
         Form {
+            Section {
+                Button("Set A and B in the viewfinder") {
+                    store.selectMode(.video)
+                    if !store.viewfinderPull { store.toggleViewfinderPull() }
+                    onRun()
+                }
+                Text("Tap two subjects to remember their focus distances. Then tap A or B to move focus smoothly, or move the slider yourself. The marks don’t follow moving people.").font(.caption)
+            }
             Section {
                 Toggle("Fixed-lens focus mode", isOn: $store.focusPullLensEnabled)
                     .disabled(store.isRecording)

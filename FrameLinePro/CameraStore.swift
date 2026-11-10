@@ -12,6 +12,15 @@ final class CameraStore {
     var showcaseScene: String?
     var showcaseImage: UIImage?
     var showWelcome = false
+    var requestGallery = false
+    var viewfinderShortcuts: [ViewfinderShortcut] = {
+        let saved = UserDefaults.standard.stringArray(forKey: "frameline.shortcuts.v1")?.compactMap(ViewfinderShortcut.init(rawValue:))
+        return saved?.count == 3 ? saved! : [.timelapse, .magnify, .timer]
+    }() { didSet { if !isShowcase { UserDefaults.standard.set(viewfinderShortcuts.map(\.rawValue), forKey: "frameline.shortcuts.v1") } } }
+    @ObservationIgnored var lockedImportObserver: Task<Void, Never>?
+    var importingLockedCaptures = false
+    var libraryReady = false
+    var libraryDirty = false
 
     @ObservationIgnored private var finalizationActivity: CaptureSaveActivity?
     @ObservationIgnored private var preserveTask: Task<Void, Never>?
@@ -45,6 +54,12 @@ final class CameraStore {
             refreshRecordingCodecs()
         }
     }
+    var viewfinderPull = false
+    var focusAPoint: CGPoint?
+    var focusBPoint: CGPoint?
+    var focusMarkTarget = 0
+    var focusMarkBusy = false
+    @ObservationIgnored var focusMarkTask: Task<Void, Never>?
     var focusStart: Float?
     var focusEnd: Float?
     var focusPullDuration = 2.0
@@ -64,6 +79,8 @@ final class CameraStore {
     var mode: CaptureMode = .rangefinder {
         didSet {
             if oldValue != mode {
+                viewfinderPull = false; focusMarkTask?.cancel(); focusMarkBusy = false; cancelFocusPull()
+                if mode == .video, livePhoto || depthPortrait { livePhoto = false; depthPortrait = false; engine.configurePhotoCompanions(live: false, depth: false) }
                 updateStyle()
                 updateMonitor()
                 configureAdvancedFraming()
@@ -75,6 +92,9 @@ final class CameraStore {
     var saveTarget: SaveTarget = .both
     var aspect: FrameAspect = .sensor
     var exposure: Float = -0.7
+    var naturalPhoto = false
+    var livePhoto = false
+    var depthPortrait = false
     var rawEnabled = false
     var flash: FlashChoice = .off {
         didSet {
@@ -497,6 +517,9 @@ final class CameraStore {
 
     var caps = DeviceCaps()
     var captures: [CaptureItem] = []
+    var photoEdits: [UUID: PhotoEdit] = [:]
+    var editingPhotos: Set<UUID> = []
+    @ObservationIgnored var librarySaveTask: Task<Bool, Never>?
     var isRecording = false
     var isBusy = false
     private struct StillContext {
@@ -505,13 +528,16 @@ final class CameraStore {
         let detail: String
         let saves: Bool
         let mode: CaptureMode
+        var natural = false
+        var live = false
+        var portrait = false
     }
     @ObservationIgnored private var stillContexts: [UUID: StillContext] = [:]
     @ObservationIgnored private var compositionTail: Task<Void, Never>?
     @ObservationIgnored private var compositionTailID: UUID?
     var pendingPhotoCount = 0
 
-    private var photoCapacity: Int { rawEnabled || format == .heifMax ? 2 : 5 }
+    private var photoCapacity: Int { rawEnabled || naturalPhoto || livePhoto || depthPortrait || format == .heifMax ? 2 : 5 }
     var recordingStarted: Date?
 
     // Timecode runs on from clip to clip. It restarts only when reset.
@@ -649,6 +675,8 @@ final class CameraStore {
     func activate() {
         guard bound == false else { return }
         bound = true
+        observeLockedImports()
+        restoreLibrary()
 
         CustomLookRegistry.shared.update(customLooks)
         if !UserDefaults.standard.bool(forKey: "frameline.preserveSessionV2") {
@@ -670,7 +698,7 @@ final class CameraStore {
             mode = .video; dualShot = true; logProfile = .off
             look = FilmLook.lineup.first(where: { $0.id != "standard" }) ?? .standard
         }
-        if ProcessInfo.processInfo.arguments.contains("--verify-focus-pull") {
+        if ProcessInfo.processInfo.arguments.contains("--verify-focus-pull") || ProcessInfo.processInfo.arguments.contains("--verify-viewfinder") {
             mode = .video; dualShot = true; logProfile = .off; focusPullLensEnabled = true
         }
         #endif
@@ -816,6 +844,10 @@ final class CameraStore {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-pipeline") { verifyPhotoPipeline() }
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-burst") { verifyPhotoBurst() }
+        if ProcessInfo.processInfo.arguments.contains("--verify-upgrade") { verifyUpgrade() }
+        if ProcessInfo.processInfo.arguments.contains("--verify-library") { verifyLibraryAndEdits() }
+        if ProcessInfo.processInfo.arguments.contains("--verify-direct-grade") { verifyDirectGrade() }
+        if ProcessInfo.processInfo.arguments.contains("--verify-viewfinder") { verifyViewfinderFocus() }
         if (ProcessInfo.processInfo.arguments.contains("--verify-styled-recording") || ProcessInfo.processInfo.arguments.contains("--verify-efficiency") || ProcessInfo.processInfo.arguments.contains("--verify-interruption")) {
             engine.verifyStyledRecording(style: styleParams)
             if ProcessInfo.processInfo.arguments.contains("--verify-efficiency") {
@@ -1330,6 +1362,9 @@ final class CameraStore {
         defaults.set(saveTarget.rawValue, forKey: "frameline.p.save")
         defaults.set(format.rawValue, forKey: "frameline.p.format")
         defaults.set(rawEnabled, forKey: "frameline.p.raw")
+        defaults.set(naturalPhoto, forKey: "frameline.p.natural")
+        defaults.set(livePhoto, forKey: "frameline.p.live")
+        defaults.set(depthPortrait, forKey: "frameline.p.depth")
     }
 
     private func restorePreserved() {
@@ -1383,6 +1418,12 @@ final class CameraStore {
         }
 
         rawEnabled = defaults.bool(forKey: "frameline.p.raw")
+        if mode != .video {
+            naturalPhoto = defaults.bool(forKey: "frameline.p.natural")
+            livePhoto = defaults.bool(forKey: "frameline.p.live")
+            depthPortrait = defaults.bool(forKey: "frameline.p.depth")
+            engine.configurePhotoCompanions(live: livePhoto, depth: depthPortrait, natural: naturalPhoto)
+        }
     }
 
     func setExposure(_ value: Float) {
@@ -1466,6 +1507,12 @@ final class CameraStore {
     }
 
     func fireShutter() {
+        if mode != .video, livePhoto, (styleParams.isIdentity == false || bakeLUT || saveTarget != .full || aspect != .sensor) {
+            showToast("Live Photo keeps the original full frame. Turn off looks and LUT baking, and choose Full / Sensor."); return
+        }
+        if mode != .video, naturalPhoto, !caps.supportsNativeRaw {
+            showToast("Natural RAW needs a supported rear lens. Turn it off or choose a compatible lens."); return
+        }
         guard mode == .video || !isBusy else { return }
         shutterTick += 1
 
@@ -1620,7 +1667,7 @@ final class CameraStore {
         stillContexts[id] = makeStillContext()
         pendingPhotoCount = stillContexts.count
         isBusy = pendingPhotoCount >= photoCapacity
-        engine.capturePhoto(raw: rawEnabled, flash: flash, format: format, id: id)
+        engine.capturePhoto(raw: rawEnabled || naturalPhoto, flash: flash, format: format, id: id, nativeRaw: naturalPhoto)
         return id
     }
 
@@ -2610,8 +2657,8 @@ final class CameraStore {
         guard !lockedControls.contains(.focus) else { showToast("Unlock Focus in M before running a pull."); return }
         cancelFocusPull()
         let id = UUID(); focusPullID = id
+        let start = focusAuto ? liveFocus : lensPosition
         focusAuto = false
-        let start = reverse ? second : first
         let end = reverse ? first : second
         let duration = max(0.5, min(20, focusPullDuration))
         focusPullRunning = true; focusPullProgress = 0
@@ -2651,7 +2698,7 @@ final class CameraStore {
             lookID: look.id, quality: currentDials.quality, tone: currentDials.tone, lookOptions: lookOptions,
             lutName: selectedLUT?.name, lutPreview: monitorLUT, lutBake: bakeLUT, lutIntensity: lutIntensity,
             framing: framingOptions, tracking: subjectTracking, focusStart: focusStart, focusEnd: focusEnd, focusDuration: focusPullDuration,
-            audioInput: selectedMicrophone, audioMonitoring: headphoneMonitoring, focusLens: focusPullLensEnabled)
+            audioInput: selectedMicrophone, audioMonitoring: headphoneMonitoring, focusLens: focusPullLensEnabled, naturalPhoto: naturalPhoto, livePhoto: livePhoto, depthPortrait: depthPortrait)
     }
 
     func applyShootingPreset(_ preset: ShootingPreset) {
@@ -2661,6 +2708,10 @@ final class CameraStore {
         applyingShootingPreset = true
         focusPullLensEnabled = preset.focusLens ?? false
         selectMode(CaptureMode(rawValue: preset.mode) ?? .video)
+        naturalPhoto = mode != .video && (preset.naturalPhoto ?? false)
+        livePhoto = mode != .video && (preset.livePhoto ?? false)
+        depthPortrait = mode != .video && (preset.depthPortrait ?? false)
+        engine.configurePhotoCompanions(live: livePhoto, depth: depthPortrait, natural: naturalPhoto)
         format = PhotoFormat(rawValue: preset.format) ?? .heif
         saveTarget = SaveTarget(rawValue: preset.saveTarget) ?? .both
         aspect = FrameAspect(rawValue: preset.aspect) ?? .sensor
@@ -2757,7 +2808,7 @@ final class CameraStore {
     }
 
     func delete(_ item: CaptureItem) {
-        let stillFiles = [item.fullPhotoURL, item.cropPhotoURL, graded[AnyHashable(item.id)]?.fullURL, graded[AnyHashable(item.id)]?.cropURL].compactMap { $0 }
+        let stillFiles = [item.fullPhotoURL, item.cropPhotoURL, item.livePhotoMovieURL, graded[AnyHashable(item.id)]?.fullURL, graded[AnyHashable(item.id)]?.cropURL].compactMap { $0 }
         for file in stillFiles { try? FileManager.default.removeItem(at: file) }
         captures.removeAll { $0.id == item.id }
         if let url = graded[AnyHashable(item.id)]?.movie {
@@ -2766,6 +2817,8 @@ final class CameraStore {
 
         graded[AnyHashable(item.id)] = nil
         clipInfo[AnyHashable(item.id)] = nil
+        photoEdits[item.id] = nil
+        persistLibrary()
 
         if let url = item.movieURL,
            url.path != "/dev/null" {
@@ -2850,7 +2903,7 @@ final class CameraStore {
                 )
             }
 
-        case .photo(let id, let processed, let raw):
+        case .photo(let id, let processed, let raw, let companion):
             guard let processed else {
                 stillContexts[id] = nil
                 pendingPhotoCount = stillContexts.count
@@ -2861,7 +2914,7 @@ final class CameraStore {
             }
             if stillContexts[id] == nil { stillContexts[id] = makeStillContext() }
             if bracketTask != nil { isBusy = false }
-            storeStill(fullData: processed, raw: raw, simulated: false, id: id)
+            storeStill(fullData: processed, raw: raw, simulated: false, id: id, companion: companion)
 
         case .movie(let primary, let secondary, let kind, let recordingID, let baked):
             defer { finalizationActivity?.end(); finalizationActivity = nil }
@@ -2894,6 +2947,7 @@ final class CameraStore {
             )
 
             captures.insert(item, at: 0)
+            persistLibrary()
 
             // Dual shot gives two files, horizontal and vertical. With a look
             // or LUT on, only the graded pair goes to Photos, so there are
@@ -2991,7 +3045,7 @@ final class CameraStore {
                     style: style
                 )
 
-                made.append(url)
+                made.append(url.map { self?.persist(url: $0, ext: "mov") ?? $0 })
 
 
             }
@@ -3009,6 +3063,7 @@ final class CameraStore {
             result.movie = made.first ?? nil
             result.storiesMovie = made.count > 1 ? made[1] : nil
             graded[id] = result
+            persistLibrary()
 
             if made.contains(where: { $0 == nil }) {
                 showToast("A graded video could not be made.")
@@ -3045,10 +3100,10 @@ final class CameraStore {
         let cube = lut.flatMap { LUTMonitor.cubeData(from: $0.data, size: Int($0.size)) }
         return StillContext(request: StillComposer.Request(focalScale: scale, aspectRatio: aspect.ratio,
             saveTarget: saveTarget.rawValue, style: styleParams, cube: cube, cubeSize: cube == nil ? 0 : (lut?.size ?? 0),
-            lutIntensity: lutIntensity), detail: caption, saves: saveToPhotos, mode: mode)
+            lutIntensity: lutIntensity), detail: caption, saves: saveToPhotos, mode: mode, natural: naturalPhoto, live: livePhoto, portrait: depthPortrait)
     }
 
-    private func storeStill(fullData: Data, raw: Data?, simulated: Bool, id: UUID = UUID()) {
+    private func storeStill(fullData: Data, raw: Data?, simulated: Bool, id: UUID = UUID(), companion: PhotoCompanion = PhotoCompanion()) {
         let context = stillContexts[id] ?? makeStillContext()
         stillContexts[id] = context
         pendingPhotoCount = stillContexts.count
@@ -3058,11 +3113,24 @@ final class CameraStore {
             await previous?.value
             let prepared = await Task.detached(priority: .userInitiated) {
                 autoreleasepool {
-                    let result = StillComposer.compose(imageData: fullData, request: context.request)
-                    return PreparedStill.make(result: result, raw: raw, id: id)
+                    let developed = context.natural ? raw.flatMap { PhotoDeveloper.natural($0) } : nil
+                    let portrait = context.portrait ? companion.depth.flatMap { PortraitRenderer.render(fullData, depth: $0) } : nil
+                    var result = StillComposer.compose(imageData: developed ?? fullData, request: context.request)
+                    if let portrait {
+                        let bokeh = StillComposer.compose(imageData: portrait, request: context.request)
+                        result.gradedFull = bokeh.gradedFull ?? bokeh.fullJPEG
+                        result.gradedCrop = bokeh.gradedCrop ?? bokeh.cropJPEG
+                    }
+                    var prepared = PreparedStill.make(result: result, raw: raw, id: id)
+                    prepared.naturalDeveloped = developed != nil; prepared.portraitRendered = portrait != nil
+                    return prepared
                 }
             }.value
             guard let self else { return }
+            if context.natural, !prepared.naturalDeveloped { showToast("Natural RAW development wasn’t available; the standard photo and any RAW were kept.") }
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--verify-upgrade") { NSLog("UPGRADE_CAPTURE id=%@ natural=%d depth=%d live=%d", id.uuidString, prepared.naturalDeveloped ? 1 : 0, prepared.portraitRendered ? 1 : 0, companion.liveMovie == nil ? 0 : 1) }
+            #endif
             var item = CaptureItem(fullImage: prepared.full, cropImage: prepared.crop, movieURL: nil,
                 storiesURL: nil, rawURL: prepared.rawURL, detail: context.detail, simulated: simulated, mode: context.mode)
             item.id = id; item.date = context.date
@@ -3074,17 +3142,98 @@ final class CameraStore {
             }
             let position = captures.firstIndex(where: { $0.date < item.date }) ?? captures.endIndex
             captures.insert(item, at: position)
+            trimGalleryPreviews()
+            persistLibrary()
             if prepared.photosURLs.isEmpty { showToast("Could not store the full-resolution photo. Check free space.") }
             stillContexts[id] = nil
             pendingPhotoCount = stillContexts.count
             isBusy = pendingPhotoCount >= photoCapacity
             if compositionTailID == id { compositionTail = nil; compositionTailID = nil }
-            if context.saves { saveStillFiles(prepared.photosURLs, raw: prepared.rawURL) }
+            if context.live, let movie = companion.liveMovie, let original = prepared.fullURL {
+                let destination = original.deletingLastPathComponent().appendingPathComponent("live.mov")
+                do {
+                    try FileManager.default.moveItem(at: movie, to: destination)
+                    if let index = captures.firstIndex(where: { $0.id == id }) { captures[index].livePhotoMovieURL = destination }
+                    persistLibrary()
+                    if context.saves { saveLivePhoto(still: original, movie: destination) }
+                } catch { showToast("The Live Photo movie couldn’t be kept. Your still is safe."); if context.saves { saveStillFiles(prepared.photosURLs, raw: nil) } }
+            } else if context.saves { saveStillFiles(prepared.photosURLs, raw: prepared.rawURL) }
+            if context.live && companion.liveMovie == nil { showToast("Live motion wasn’t delivered. The still photo was kept.") }
+            if context.portrait && companion.depth == nil { showToast("Depth wasn’t delivered. The original photo was kept.") }
             if pendingPhotoCount == 0 { finalizationActivity?.end(); finalizationActivity = nil }
         }
     }
 
     #if DEBUG
+    func verifyUpgrade() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            saveToPhotos = false; selectMode(.photo); format = .heif; rawEnabled = false; flash = .off; saveTarget = .both; aspect = .sensor
+            UIApplication.shared.isIdleTimerDisabled = true
+            defer { UIApplication.shared.isIdleTimerDisabled = false }
+            let initial = Set(captures.map(\.id))
+            let tickStart = ProcessInfo.processInfo.systemUptime
+            var ticks = 0
+            let ticker = Task { @MainActor in while !Task.isCancelled { ticks += 1; try? await Task.sleep(for: .milliseconds(16)) } }
+            defer { ticker.cancel() }
+            for batch in 0..<4 {
+                setPhotoFeature(.standard)
+                look = batch.isMultiple(of: 2) ? .standard : FilmLook.lineup[1]
+                var ids: [UUID] = []
+                let begin = ProcessInfo.processInfo.systemUptime
+                for _ in 0..<5 {
+                    ids.append(submitPhoto()); try? await Task.sleep(for: .milliseconds(100))
+                }
+                while pendingPhotoCount > 0, ProcessInfo.processInfo.systemUptime - begin < 30 { try? await Task.sleep(for: .milliseconds(30)) }
+                let count = captures.filter { ids.contains($0.id) }.count
+                NSLog("UPGRADE_VERIFY burst=%ld %@ captured=%ld time=%.2f", batch, count == 5 && pendingPhotoCount == 0 ? "PASS" : "FAIL", count, ProcessInfo.processInfo.systemUptime - begin)
+            }
+            look = .standard
+            for feature in [PhotoFeature.natural, .live, .portrait] {
+                if feature == .portrait { focusPullLensEnabled = false }
+                setPhotoFeature(feature)
+                try? await Task.sleep(for: .seconds(2))
+                let supported = feature == .natural ? caps.supportsNativeRaw : feature == .live ? caps.supportsLivePhoto : caps.supportsDepth
+                if supported {
+                    let id = submitPhoto(); let begin = ProcessInfo.processInfo.systemUptime
+                    while stillContexts[id] != nil, ProcessInfo.processInfo.systemUptime - begin < 25 { try? await Task.sleep(for: .milliseconds(40)) }
+                    NSLog("UPGRADE_VERIFY special=%@ %@", String(describing: feature), captures.contains(where: { $0.id == id }) ? "PASS delivered" : "FAIL")
+                    if feature == .natural, let item = captures.first(where: { $0.id == id }), let rawURL = item.rawURL, let source = item.fullPhotoURL {
+                        let result = await Task.detached(priority: .utility) {
+                            guard let original = try? Data(contentsOf: rawURL), let data = try? Data(contentsOf: source),
+                                  let preview = PhotoDeveloper.rawPreview(original), PreparedStill.thumbnail(preview) != nil,
+                                  let developed = PhotoDeveloper.develop(data, edit: PhotoEdit(exposure: 0.5, useRAW: true), rawData: original), PreparedStill.thumbnail(developed) != nil else { return false }
+                            return (try? Data(contentsOf: rawURL)) == original
+                        }.value
+                        NSLog("UPGRADE_VERIFY RAW editor %@", result ? "PASS" : "FAIL")
+                    }
+                } else { NSLog("UPGRADE_VERIFY special=%@ UNSUPPORTED current lens", String(describing: feature)) }
+            }
+            setPhotoFeature(.standard)
+            if let sample = captures.first(where: { !initial.contains($0.id) }), let source = sample.fullPhotoURL {
+                let result = await Task.detached(priority: .utility) {
+                    guard let original = try? Data(contentsOf: source) else { return false }
+                    let edit = PhotoEdit(styleID: FilmLook.lineup[1].id, exposure: 0.3, saturation: 0.8, warmth: 0.2)
+                    guard let image = PhotoDeveloper.develop(original, edit: edit), PreparedStill.thumbnail(image) != nil else { return false }
+                    return image != original && (try? Data(contentsOf: source)) == original
+                }.value
+                NSLog("UPGRADE_VERIFY nondestructive %@", result ? "PASS" : "FAIL")
+            }
+            let testRoot = FileManager.default.temporaryDirectory.appendingPathComponent("LibraryTest-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: testRoot, withIntermediateDirectories: true)
+            let archive = CaptureLibrary(root: testRoot)
+            let records = (0..<250).map { _ in LibraryRecord(id: UUID(), date: Date(), detail: "test", mode: "photo", edit: PhotoEdit()) }
+            do {
+                try await archive.save(records)
+                let loaded = await archive.load()
+                NSLog("UPGRADE_VERIFY archive %@ records=%ld", loaded.map(\.id) == records.map(\.id) ? "PASS" : "FAIL", loaded.count)
+            } catch { NSLog("UPGRADE_VERIFY archive FAIL %@", error.localizedDescription) }
+            try? FileManager.default.removeItem(at: testRoot)
+            for item in captures.filter({ !initial.contains($0.id) }) { delete(item) }
+            NSLog("UPGRADE_VERIFY COMPLETE mainActorTicks=%ld elapsed=%.2f thermal=%ld no Photos writes", ticks, ProcessInfo.processInfo.systemUptime - tickStart, ProcessInfo.processInfo.thermalState.rawValue)
+        }
+    }
+
     func verifyPhotoBurst() {
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(3))
@@ -3152,6 +3301,19 @@ final class CameraStore {
     }
     #endif
 
+    private func saveLivePhoto(still: URL, movie: URL) {
+        enqueueSave {
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    let request = PHAssetCreationRequest.forAsset()
+                    request.addResource(with: .photo, fileURL: still, options: nil)
+                    request.addResource(with: .pairedVideo, fileURL: movie, options: nil)
+                }
+                return true
+            } catch { return false }
+        }
+    }
+
     private func saveStillFiles(_ urls: [URL], raw: URL?) {
         guard !urls.isEmpty else { return }
         enqueueSave {
@@ -3217,7 +3379,11 @@ final class CameraStore {
     }
 
     private func persist(url: URL, ext: String) -> URL {
-        url
+        let root = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Movies", isDirectory: true)
+        if url.path.hasPrefix(root.path + "/") { return url }
+        let destination = root.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
+        do { try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true); try FileManager.default.moveItem(at: url, to: destination); return destination }
+        catch { showToast("The video is available now but couldn’t be moved to the permanent gallery. Export it before closing."); return url }
     }
 
     // MARK: - Photos library
@@ -3456,7 +3622,7 @@ struct MicInput: Identifiable, Hashable {
 }
 
 // What the gallery shows for a recorded clip.
-struct ClipInfo {
+nonisolated struct ClipInfo: Codable, Sendable {
     var number: Int
     var start: String
     var end: String

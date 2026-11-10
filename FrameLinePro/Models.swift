@@ -352,6 +352,9 @@ struct DeviceCaps: Sendable, Equatable {
     var hasTorch = false
     var supportsManualFocus = false
     var supportsRaw = false
+    var supportsNativeRaw = false
+    var supportsLivePhoto = false
+    var supportsDepth = false
     var supportsLog = false
     var supportsLog2 = false
     var supportsMultiCam = false
@@ -401,4 +404,5 @@ struct CaptureItem: Identifiable {
     var mode: CaptureMode
     var fullPhotoURL: URL? = nil
     var cropPhotoURL: URL? = nil
+    var livePhotoMovieURL: URL? = nil
 }

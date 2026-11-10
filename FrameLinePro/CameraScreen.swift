@@ -48,6 +48,7 @@ struct CameraScreen: View {
             if !store.isShowcase {
                 store.activate()
                 store.resumeForegroundWork()
+                Task { await store.importLockedCaptures() }
                 store.engine.start()
             }
         }
@@ -67,6 +68,14 @@ struct CameraScreen: View {
                 if !store.isRecording { store.engine.stop() }
             }
         }
+        .onChange(of: store.selectedLensID) { _, _ in
+            if store.viewfinderPull && (store.focusStart != nil || store.focusEnd != nil) {
+                store.cancelFocusPull(); store.focusStart = nil; store.focusEnd = nil
+                store.focusAPoint = nil; store.focusBPoint = nil; store.focusMarkTarget = 0
+                store.showToast("Lens changed. Tap to set A and B again.")
+            }
+        }
+        .onChange(of: store.requestGallery) { _, requested in if requested { showGallery = true; store.requestGallery = false } }
         .sheet(isPresented: $showGallery) {
             GallerySheet(store: store)
         }
@@ -245,7 +254,8 @@ struct CameraScreen: View {
                         reticleID = UUID()
                         reticleFromTouch = false
 
-                        store.focus(at: value.location, in: geo.size)
+                        if store.viewfinderPull { store.selectFocusMark(at: value.location, in: geo.size) }
+                        else { store.focus(at: value.location, in: geo.size) }
                         hideReticleLater()
                     }
                 )
@@ -280,7 +290,7 @@ struct CameraScreen: View {
                     // while the finger is still down.
                     LongPressGesture(minimumDuration: 0.5)
                         .onEnded { _ in
-                            guard let point = touchStart else { return }
+                            guard !store.viewfinderPull, let point = touchStart else { return }
 
                             // The square jumps to where the finger is holding.
                             if let current = reticle,
@@ -303,6 +313,18 @@ struct CameraScreen: View {
                     }
                 )
 
+                if store.viewfinderPull, !store.cleanFeed {
+                    ForEach(0..<2) { index in
+                        if let mark = index == 0 ? store.focusAPoint : store.focusBPoint {
+                            Text(index == 0 ? "A" : "B").font(.system(size: 13, weight: .bold))
+                                .frame(width: 32, height: 32).foregroundStyle(.black)
+                                .background(Theme.gold, in: Circle()).overlay(Circle().stroke(.white.opacity(0.8)))
+                                .position(x: mark.x * geo.size.width, y: mark.y * geo.size.height)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                }
+
                 if store.mode == .video, store.dualShot, store.cleanFeed == false {
                     DualShotLiveWindow(store: store)
                 }
@@ -322,15 +344,24 @@ struct CameraScreen: View {
                             Spacer()
 
                             HStack(spacing: 8) {
-                                timelapsePill
-                                magPill
-                                countdownPill
+                                if store.viewfinderPull {
+                                    ViewfinderFocusBar(store: store)
+                                } else {
+                                    ForEach(0..<3) { index in
+                                        switch store.viewfinderShortcuts[index] {
+                                        case .timelapse: timelapsePill
+                                        case .magnify: magPill
+                                        case .timer: countdownPill
+                                        default: CustomShortcutButton(store: store, shortcut: store.viewfinderShortcuts[index])
+                                        }
+                                    }
+                                }
                             }
 
                             Spacer()
                         }
                         .overlay(alignment: .trailing) {
-                            if abVisible { abPill }
+                            if abVisible && !store.viewfinderPull { abPill }
                         }
                         .transition(.opacity)
 
@@ -607,7 +638,7 @@ struct CameraScreen: View {
     private var chipRow: some View {
         HStack(spacing: 8) {
             Chip(
-                title: store.rawEnabled
+                title: store.mode != .video && store.naturalPhoto ? "NATURAL RAW" : store.mode != .video && store.livePhoto ? "LIVE PHOTO" : store.mode != .video && store.depthPortrait ? "DEPTH" : store.rawEnabled
                     ? "RAW + \(store.format.rawValue)"
                     : store.format.rawValue,
                 systemImage: nil,
@@ -704,6 +735,7 @@ struct CameraScreen: View {
                     dragStartExposure = store.exposure
                 }
 
+                guard !store.viewfinderPull else { return }
                 let next = (dragStartExposure ?? store.exposure)
                     - Float(value.translation.height) / 90
 
@@ -1903,7 +1935,17 @@ struct AidsBar<Timecode: View>: View {
         HStack(alignment: .top, spacing: 6) {
             VStack(alignment: .leading, spacing: 6) {
                 pill("HIST", isOn: $store.showHistogram)
-                if store.mode == .video { aidsMenu }
+                if store.mode == .video {
+                    HStack(spacing: 6) {
+                    aidsMenu
+                    Button { store.toggleViewfinderPull() } label: {
+                        Image(systemName: "camera.metering.center.weighted").font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(store.viewfinderPull ? .black : .white)
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .glass(Capsule(), tint: store.viewfinderPull ? Theme.gold : nil)
+                    }.accessibilityLabel("Set focus pull in viewfinder")
+                    }.fixedSize()
+                }
             }
             .frame(width: 50, alignment: .leading)
 
@@ -3044,6 +3086,7 @@ struct ToolBar: View {
 
     private var manualButton: some View {
         Button {
+            store.viewfinderPull = false; store.focusMarkTask?.cancel(); store.focusMarkBusy = false
             store.showManual.toggle()
             if !store.showManual {
                 store.activeControl = nil

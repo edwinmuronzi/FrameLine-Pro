@@ -241,7 +241,7 @@ private nonisolated struct FormatProbe {
 enum EngineEvent: Sendable {
     case caps(DeviceCaps)
     case recording(Bool)
-    case photo(id: UUID, processed: Data?, raw: Data?)
+    case photo(id: UUID, processed: Data?, raw: Data?, companion: PhotoCompanion = PhotoCompanion())
     case movie(primary: URL, secondary: URL?, kind: DualKind, recordingID: UUID? = nil, baked: Bool = false)
     case message(String)
     case exposureSample(iso: Float, shutter: Double)
@@ -385,11 +385,15 @@ nonisolated final class CaptureEngine: NSObject,
     private var exposureApplyStart: TimeInterval = 0
     private var lastExposureApplied: TimeInterval = 0
     private var previewLog: LogProfile = .off
+    private var requestedPhotoLive = false
+    private var requestedPhotoDepth = false
+    private var requestedNaturalRaw = false
     private var previewVideo = false
     private var previewSettings: RecordingSettings?
     private var cachedProbes: [FormatProbe] = []
     private var cachedProbeKey: String?
     private var deviceAngle: CGFloat = 90
+    private var focusMeasurementID = UUID()
     private var focusLocked = false
 
     // Orientation: photos and video follow how the phone is held.
@@ -1077,6 +1081,7 @@ nonisolated final class CaptureEngine: NSObject,
                 return
             }
 
+            self.focusMeasurementID = UUID()
             self.focusLocked = true
 
             self.lock(device) {
@@ -1086,10 +1091,59 @@ nonisolated final class CaptureEngine: NSObject,
         }
     }
 
+    // Measure one point without moving exposure. Stop autofocus after settling,
+    // and return the actual hardware lens position rather than a guessed delay.
+    func measureFocus(at point: CGPoint, viewSize: CGSize? = nil, reel: Bool = false) async -> Float? {
+        await withCheckedContinuation { continuation in
+            queue.async { [weak self] in
+                guard let self, let device = self.videoDevice,
+                      device.isLockingFocusWithCustomLensPositionSupported,
+                      device.isFocusPointOfInterestSupported,
+                      device.isFocusModeSupported(.autoFocus) else { continuation.resume(returning: nil); return }
+                var devicePoint = point
+                if let viewSize, viewSize.width > 0, viewSize.height > 0 {
+                    let angle = self.captureAngle()
+                    let dimensions = device.activeFormat.formatDescription.dimensions
+                    let landscape = angle == 0 || angle == 180
+                    let sourceRatio = landscape ? CGFloat(max(dimensions.width, dimensions.height)) / CGFloat(min(dimensions.width, dimensions.height)) : CGFloat(min(dimensions.width, dimensions.height)) / CGFloat(max(dimensions.width, dimensions.height))
+                    let feedRatio: CGFloat = reel ? 9.0 / 16 : sourceRatio
+                    let viewRatio = viewSize.width / viewSize.height
+                    let visibleW = min(1, viewRatio / feedRatio), visibleH = min(1, feedRatio / viewRatio)
+                    let feed = CGPoint(x: (1 - visibleW) / 2 + point.x * visibleW, y: (1 - visibleH) / 2 + point.y * visibleH)
+                    let crop = ReelGeometry.crop(in: CGRect(x: 0, y: 0, width: sourceRatio, height: 1), ratio: feedRatio, center: reel ? self.reelTrackingState.current : CGPoint(x: 0.5, y: 0.5))
+                    var x = (crop.minX + feed.x * crop.width) / sourceRatio
+                    let y = crop.minY + feed.y * crop.height
+                    if device.position == .front { x = 1 - x }
+                    switch angle {
+                    case 0: devicePoint = CGPoint(x: x, y: y)
+                    case 180: devicePoint = CGPoint(x: 1 - x, y: 1 - y)
+                    case 270: devicePoint = CGPoint(x: 1 - y, y: x)
+                    default: devicePoint = CGPoint(x: y, y: 1 - x)
+                    }
+                }
+                self.lock(device) { device.focusPointOfInterest = devicePoint; device.focusMode = .autoFocus }
+                let measurement = UUID(); self.focusMeasurementID = measurement
+                self.waitForFocus(device, token: measurement, attempts: 0, completion: { continuation.resume(returning: $0) })
+            }
+        }
+    }
+    private func waitForFocus(_ device: AVCaptureDevice, token: UUID, attempts: Int, completion: @escaping @Sendable (Float?) -> Void) {
+        queue.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self, self.videoDevice === device, self.focusMeasurementID == token else { completion(nil); return }
+            if attempts >= 20 { completion(nil); return }
+            if attempts < 2 || device.isAdjustingFocus { self.waitForFocus(device, token: token, attempts: attempts + 1, completion: completion); return }
+            let position = device.lensPosition
+            self.focusLocked = true
+            self.lock(device) { device.setFocusModeLocked(lensPosition: position, completionHandler: nil) }
+            completion(position)
+        }
+    }
+
     func focus(at point: CGPoint) {
         queue.async { [weak self] in
             guard let self, let device = self.videoDevice else { return }
 
+            self.focusMeasurementID = UUID()
             self.focusLocked = false
 
             self.lock(device) {
@@ -1207,19 +1261,43 @@ nonisolated final class CaptureEngine: NSObject,
         }
     }
 
+    func configurePhotoCompanions(live: Bool, depth: Bool, natural: Bool = false) {
+        queue.async { [weak self] in
+            guard let self, self.photoDelegates.isEmpty, !self.movieOutput.isRecording, self.currentLiveWriter() == nil else { return }
+            self.requestedPhotoLive = live; self.requestedPhotoDepth = depth; self.requestedNaturalRaw = natural
+            self.session.beginConfiguration()
+            if self.photoOutput.isAppleProRAWSupported { self.photoOutput.isAppleProRAWEnabled = !natural }
+            if live, self.session.outputs.contains(self.movieOutput) { self.session.removeOutput(self.movieOutput) }
+            self.photoOutput.isLivePhotoCaptureEnabled = live && self.photoOutput.isLivePhotoCaptureSupported
+            self.photoOutput.isDepthDataDeliveryEnabled = depth && self.photoOutput.isDepthDataDeliverySupported
+            if !live, !self.session.outputs.contains(self.movieOutput), self.session.canAddOutput(self.movieOutput) { self.session.addOutput(self.movieOutput) }
+            self.session.commitConfiguration()
+            self.publishCaps()
+            if live && !self.photoOutput.isLivePhotoCaptureEnabled { self.emit(.message("Live Photos aren’t available on this camera configuration.")) }
+            if depth && !self.photoOutput.isDepthDataDeliveryEnabled { self.emit(.message("Depth portraits aren’t available on this lens.")) }
+        }
+    }
+
     // MARK: - Photo Capture
 
-    func capturePhoto(raw: Bool, flash: FlashChoice, format: PhotoFormat, id: UUID = UUID()) {
+    func capturePhoto(raw: Bool, flash: FlashChoice, format: PhotoFormat, id: UUID = UUID(), nativeRaw: Bool = false) {
         queue.async { [weak self] in
             guard let self else { return }
 
             let settings = self.makePhotoSettings(
                 raw: raw,
                 flash: flash,
-                format: format
+                format: format, nativeRaw: nativeRaw
             )
 
-            settings.photoQualityPrioritization = .balanced
+            if self.photoOutput.isLivePhotoCaptureEnabled {
+                settings.livePhotoMovieFileURL = FileManager.default.temporaryDirectory.appendingPathComponent("Live-\(id.uuidString).mov")
+            }
+            if self.photoOutput.isDepthDataDeliveryEnabled {
+                settings.isDepthDataDeliveryEnabled = true
+                settings.embedsDepthDataInPhoto = true
+            }
+            if settings.rawPhotoPixelFormatType == 0 { settings.photoQualityPrioritization = .balanced }
 
             let angle = self.captureAngle()
 
@@ -1229,11 +1307,11 @@ nonisolated final class CaptureEngine: NSObject,
             }
 
             let uniqueID = settings.uniqueID
-            let delegate = PhotoShotDelegate { [weak self] processed, raw in
+            let delegate = PhotoShotDelegate { [weak self] processed, raw, companion in
                 self?.queue.async { [weak self] in
                     guard let self else { return }
                     self.photoDelegates[uniqueID] = nil
-                    self.emit(.photo(id: id, processed: processed, raw: raw))
+                    self.emit(.photo(id: id, processed: processed, raw: raw, companion: companion))
                     if self.photoDelegates.isEmpty, self.stopAfterPhotos, !self.sessionWanted {
                         self.stopAfterPhotos = false
                         self.stop()
@@ -1872,7 +1950,7 @@ nonisolated final class CaptureEngine: NSObject,
             }
 
             if photoOutput.isAppleProRAWSupported {
-                photoOutput.isAppleProRAWEnabled = true
+                photoOutput.isAppleProRAWEnabled = !requestedNaturalRaw
             }
 
             // Shorter wait between tapping and capturing.
@@ -1888,9 +1966,12 @@ nonisolated final class CaptureEngine: NSObject,
             }
         }
 
-        if session.canAddOutput(movieOutput) {
+        if !requestedPhotoLive, session.canAddOutput(movieOutput) {
             session.addOutput(movieOutput)
         }
+
+        photoOutput.isLivePhotoCaptureEnabled = requestedPhotoLive && photoOutput.isLivePhotoCaptureSupported
+        photoOutput.isDepthDataDeliveryEnabled = requestedPhotoDepth && photoOutput.isDepthDataDeliverySupported
 
         addAnalysisOutput()
         addAudioIfAllowed()
@@ -2329,6 +2410,9 @@ nonisolated final class CaptureEngine: NSObject,
         var caps = DeviceCaps(hasCamera: videoDevice != nil)
 
         caps.supportsMultiCam = multiCam
+        caps.supportsNativeRaw = photoOutput.availableRawPhotoPixelFormatTypes.contains(where: { AVCapturePhotoOutput.isBayerRAWPixelFormat($0) })
+        caps.supportsLivePhoto = photoOutput.isLivePhotoCaptureSupported
+        caps.supportsDepth = photoOutput.isDepthDataDeliverySupported
 
         caps.supportsRaw =
             photoOutput.availableRawPhotoPixelFormatTypes.isEmpty == false
@@ -2428,14 +2512,16 @@ nonisolated final class CaptureEngine: NSObject,
     private func makePhotoSettings(
         raw: Bool,
         flash: FlashChoice,
-        format: PhotoFormat
+        format: PhotoFormat, nativeRaw: Bool = false
     ) -> AVCapturePhotoSettings {
         let codec: AVVideoCodecType = format == .jpeg ? .jpeg : .hevc
         let processed = [AVVideoCodecKey: codec]
 
         var settings: AVCapturePhotoSettings
 
-        if raw, let rawType = photoOutput.availableRawPhotoPixelFormatTypes.first {
+        let rawTypes = photoOutput.availableRawPhotoPixelFormatTypes
+        let chosenRaw = nativeRaw ? rawTypes.first(where: { AVCapturePhotoOutput.isBayerRAWPixelFormat($0) }) : rawTypes.first
+        if raw, let rawType = chosenRaw {
             settings = AVCapturePhotoSettings(
                 rawPixelFormatType: rawType,
                 processedFormat: processed
@@ -2466,7 +2552,7 @@ nonisolated final class CaptureEngine: NSObject,
 
         // The camera's full processing (Deep Fusion and the Photonic Engine),
         // the same natural look as the native Camera app.
-        if photoOutput.maxPhotoQualityPrioritization.rawValue
+        if settings.rawPhotoPixelFormatType == 0, photoOutput.maxPhotoQualityPrioritization.rawValue
             >= AVCapturePhotoOutput.QualityPrioritization.quality.rawValue {
             settings.photoQualityPrioritization = .quality
         }
@@ -3116,6 +3202,7 @@ nonisolated final class CaptureEngine: NSObject,
         queue.async { [weak self] in
             guard let self, let device = self.videoDevice else { return }
 
+            self.focusMeasurementID = UUID()
             self.focusLocked = false
 
             self.lock(device) {

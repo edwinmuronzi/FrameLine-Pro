@@ -17,7 +17,7 @@ Ten portrait marketing images for the iPhone App Store screenshot slot. Each fil
 
 ## Source and editable copy
 
-- `FrameLinePro/FeatureTour.swift`: shared feature text and the first-launch tour.
+- `FrameLinePro/FeatureTour.swift`: shared feature text and the fifteen-page first-launch tour. The marketing exporter uses the original nine shooting topics plus the final brand page.
 - `FrameLinePro/MarketingExport.swift`: Debug-only native screenshot compositor.
 - `FrameLinePro/Assets.xcassets/Story*.imageset`: original illustrative photography used by the tour.
 - `FrameLinePro/Assets.xcassets/Screen*.imageset`: compressed interface previews for efficient onboarding.

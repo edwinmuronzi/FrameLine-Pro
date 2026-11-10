@@ -8,11 +8,11 @@ struct ContentView: View {
         Group {
             #if DEBUG
             if let flag = ProcessInfo.processInfo.arguments.firstIndex(of: "--capture-story"), ProcessInfo.processInfo.arguments.count > flag + 1 {
-                let index = min(9, max(0, (Int(ProcessInfo.processInfo.arguments[flag + 1]) ?? 1) - 1))
+                let index = min(FeatureStory.all.count - 1, max(0, (Int(ProcessInfo.processInfo.arguments[flag + 1]) ?? 1) - 1))
                 CameraShowcase(story: FeatureStory.all[index])
             } else if ProcessInfo.processInfo.arguments.contains("--export-marketing") {
                 MarketingExportHost()
-            } else if ProcessInfo.processInfo.arguments.contains("--verify-photo-pipeline") || ProcessInfo.processInfo.arguments.contains("--verify-photo-burst") {
+            } else if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--verify-") }) {
                 CameraScreen(store: store)
             } else if ProcessInfo.processInfo.arguments.contains("--show-tour") {
                 FeatureTour { }

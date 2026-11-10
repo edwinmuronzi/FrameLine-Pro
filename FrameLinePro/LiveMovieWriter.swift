@@ -97,13 +97,21 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
         let original = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()]).oriented(sourceOrientation)
         let full = framing.saveDesqueezed ? original.transformed(by: framing.transform) : original
         let source = full.cropped(to: Self.cropRect(in: full.extent, viewRect: frameCrop, viewRatio: viewRatio))
-        let graded = StyleGrade.grade(source, cube: cube, cubeSize: cubeSize, intensity: intensity, style: style).cropped(to: source.extent)
+        // Keep enough source detail for the highest-resolution crop. The dual
+        // files remain 1080p; avoid grading extra pixels beyond either output.
+        let workingScale = secondary == nil ? CGFloat(1) : min(1, sizes.map { size in
+            let crop = ReelGeometry.crop(in: source.extent, ratio: size.width / size.height)
+            return max(size.width / crop.width, size.height / crop.height)
+        }.max() ?? 1)
+        let working = workingScale < 1 ? source.transformed(by: CGAffineTransform(scaleX: workingScale, y: workingScale)) : source
+        let graded = StyleGrade.grade(working, cube: cube, cubeSize: cubeSize, intensity: intensity, style: style).cropped(to: working.extent)
         let image: CIImage
         if cube != nil || !style.isIdentity {
             guard let complete = gradedFrameRenderer.materialize(graded, context: context) else { failed = true; return }
             image = complete
         } else { image = graded }
         var rendered: [CMSampleBuffer] = []
+        var renderTasks: [CIRenderTask] = []
         let trackedCenter = tracking?.advance() ?? CGPoint(x: 0.5, y: 0.5)
         for (index, size) in sizes.enumerated() {
             let ratio = size.width / size.height
@@ -115,7 +123,11 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
             var destination: CVPixelBuffer?
             let attributes = [kCVPixelBufferPoolAllocationThresholdKey as String: 8] as CFDictionary
             guard CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(nil, pools[index], attributes, &destination) == kCVReturnSuccess, let destination else { return }
-            context.render(output, to: destination, bounds: CGRect(origin: .zero, size: size), colorSpace: colorSpace)
+            let target = CIRenderDestination(pixelBuffer: destination)
+            target.colorSpace = colorSpace
+            do {
+                renderTasks.append(try context.startTask(toRender: output, from: CGRect(origin: .zero, size: size), to: target, at: .zero))
+            } catch { failed = true; return }
             if formats[index] == nil {
                 var format: CMVideoFormatDescription?
                 guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: destination, formatDescriptionOut: &format) == noErr, let format else { failed = true; return }
@@ -127,6 +139,10 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
             guard CMSampleBufferCreateReadyWithImageBuffer(allocator: nil, imageBuffer: destination, formatDescription: format, sampleTiming: &timing, sampleBufferOut: &frame) == noErr, let frame else { failed = true; return }
             rendered.append(frame)
         }
+        // Submit both independent output renders before waiting for the GPU.
+        // The buffers remain retained by their sample buffers until both finish.
+        do { for task in renderTasks { _ = try task.waitUntilCompleted() } }
+        catch { failed = true; return }
         for (writer, frame) in zip(writers, rendered) { writer.appendVideo(frame) }
         frames += 1
         if let first = rendered.first { onPreview?(first, rendered.count > 1 ? rendered[1] : nil) }

@@ -26,3 +26,19 @@ Efficiency changes preserve recording resolution, frame rate, bitrate and gradin
 Test first-launch onboarding and Settings → feature tour, including interactive look comparisons, large text and Reduce Motion. Preview stores must never activate the camera or overwrite preserved shooting preferences. Use `--show-tour --tour-page N` for Debug visual checks (zero-based page).
 
 Run `scripts/export-marketing.sh` to refresh ten native interface images and marketing compositions, then rebuild to include the compressed onboarding previews. Review the output before release. Minimum deployment is iOS 26; RAW, codecs and lens availability remain hardware-dependent. Simulator compilation does not replace testing on the oldest supported hardware.
+
+## 1.2 feature validation
+
+The app now embeds `LockCapture` (ExtensionKit secure capture) and `CameraControlWidget` (WidgetKit control), sharing the camera intent with the main app. All three targets must use the same signing team and matching bundle-ID prefixes. Locked capture has a separate photo-only camera and cannot browse the main gallery. Session content imports only after the main gallery index loads and is invalidated only after the index writes successfully. Test actual Lock Screen customization, authentication, extension termination during capture and import on hardware; compilation/signing alone does not prove those system flows.
+
+New Debug diagnostics:
+
+- `--verify-upgrade`: four batches of five independent shots, then available Native RAW/Live/depth modes, full-resolution RAW edit checks, non-destructive editing and a 250-record archive roundtrip. Does not write to Photos. Wait for `UPGRADE_VERIFY COMPLETE`.
+- `--verify-library`: 250 records restored through a new archive instance, edit recipes retained, deletion persisted, 30 preview edits, bounded thumbnails and unchanged original bytes.
+- `--verify-viewfinder`: A/B autofocus measurements, exposure preservation, forward/reverse pulls and repeated cancellation.
+- `--verify-direct-grade`: compares the optimized working-resolution grading path against full-source rendering for three styled scenes, both output crops and the left edge. The retained writer resolves the grade once before cropping; the experiment that graded both full-source crops independently was not retained.
+- `--verify-styled-recording --verify-throughput`: ten-second paired-file and preview check. `--verify-efficiency` extends it to 60 seconds and logs thermal state. Inspect actual frame counts and duration; valid files alone do not demonstrate a sustained requested frame rate.
+
+Use an optimized **Release** build on the user's phone for final review. For optimized diagnostic builds only, use Release with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG`; install a clean Release without that override afterwards. Debug-build timing is not representative of shipped performance.
+
+Thermal stress testing exposed reduced throughput on a phone already in the serious thermal state. Do not describe this as zero heat, zero dropped frames, or guaranteed 30 fps across hardware. Output dimensions, codec, bitrate and requested rate are preserved. Final UI checks: first-launch/replayed fifteen-page tour, Reduce Motion/large text, three custom shortcuts, focus-strip/LUT/A–B overlap, Photo/Rangefinder manual AUTO versus bracketing, persistent original/edited sharing, paired Live Photo playback in Photos, and depth edge quality.

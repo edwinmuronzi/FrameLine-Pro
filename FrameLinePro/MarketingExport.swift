@@ -14,7 +14,7 @@ struct MarketingSlide: View {
                     Image(systemName: "viewfinder").font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.gold)
                     Text("FRAMELINE PRO").font(.system(size: 12, weight: .heavy, design: .monospaced)).tracking(2.8)
                     Spacer()
-                    Text(String(format: "%02d", story.id + 1)).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(.white.opacity(0.5))
+                    Text(String(format: "%02d", story.id == FeatureStory.all.count - 1 ? 10 : story.id + 1)).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(.white.opacity(0.5))
                 }
                 Text(story.marketingTitle).font(.system(size: 40, weight: .bold)).tracking(-1.7)
                     .lineSpacing(-1).fixedSize(horizontal: false, vertical: true).padding(.top, 22)
@@ -62,9 +62,9 @@ struct MarketingExportHost: View {
         let root = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("MarketingExport", isDirectory: true)
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         var rendered = 0
-        for story in FeatureStory.all {
+        for (index, story) in (Array(FeatureStory.all.prefix(9)) + [FeatureStory.all.last!]).enumerated() {
             let input = root.deletingLastPathComponent().appendingPathComponent("MarketingInput")
-                .appendingPathComponent(String(format: "camera-%02d.png", story.id + 1))
+                .appendingPathComponent(String(format: "camera-%02d.png", index + 1))
             guard let shot = UIImage(contentsOfFile: input.path) else {
                 NSLog("MARKETING_EXPORT missing native interface screenshot %@", input.path)
                 continue
@@ -73,10 +73,10 @@ struct MarketingExportHost: View {
             card.proposedSize = ProposedViewSize(width: 440, height: 956)
             card.scale = 3; card.isOpaque = true
             guard let image = card.uiImage else { NSLog("MARKETING_EXPORT FAIL slide %ld", story.id); continue }
-            try? image.pngData()?.write(to: root.appendingPathComponent(String(format: "%02d-%@.png", story.id + 1, story.category.lowercased().replacingOccurrences(of: " ", with: "-"))))
+            try? image.pngData()?.write(to: root.appendingPathComponent(String(format: "%02d-%@.png", index + 1, story.category.lowercased().replacingOccurrences(of: " ", with: "-"))))
             rendered += 1
-            NSLog("MARKETING_EXPORT slide %ld complete", story.id + 1)
-            message = "Rendered \(story.id + 1) of 10"
+            NSLog("MARKETING_EXPORT slide %ld complete", index + 1)
+            message = "Rendered \(index + 1) of 10"
             await Task.yield()
         }
         message = "\(rendered) images ready"

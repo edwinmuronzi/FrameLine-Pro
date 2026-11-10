@@ -17,7 +17,9 @@ xcrun simctl install "$task_simulator" "$task_build/Build/Products/Debug-iphones
 xcrun simctl status_bar "$task_simulator" override --time '9:41' --batteryState charged --batteryLevel 100
 for task_index in {1..10}; do
   task_number="$(printf '%02d' "$task_index")"
-  xcrun simctl launch --terminate-running-process "$task_simulator" com.edwinmuronzipersonalteam.FrameLinePro --capture-story "$task_index"
+  task_story="$task_index"
+  [[ "$task_index" == 10 ]] && task_story=15
+  xcrun simctl launch --terminate-running-process "$task_simulator" com.edwinmuronzipersonalteam.FrameLinePro --capture-story "$task_story"
   sleep 8
   xcrun simctl io "$task_simulator" screenshot "$task_shots/camera-$task_number.png"
 done

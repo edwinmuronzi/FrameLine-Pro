@@ -31,7 +31,7 @@ struct FnSheet: View {
 
                         Text(detent == Self.compact
                             ? "Tap a style and watch the viewfinder. Pull up for look details, LUT and video options."
-                            : "Styles show live in the viewfinder. With a style on, the graded photo saves to Photos; your original remains in the session gallery.")
+                            : "Styles show live in the viewfinder. With a style on, the graded photo saves to Photos; your original remains in the gallery.")
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.55))
                     }
@@ -603,9 +603,10 @@ struct CaptureThumb: View {
     var info: ClipInfo?
 
     @State private var videoFrame: UIImage?
+    @State private var diskPhoto: UIImage?
 
     private var still: UIImage? {
-        graded?.crop ?? graded?.full ?? item.cropImage ?? item.fullImage
+        diskPhoto ?? graded?.crop ?? graded?.full ?? item.cropImage ?? item.fullImage
     }
 
     var body: some View {
@@ -618,7 +619,7 @@ struct CaptureThumb: View {
                 Rectangle().fill(Color.white.opacity(0.08))
             }
 
-            if still == nil {
+            if item.movieURL != nil {
                 Image(systemName: "play.circle.fill")
                     .font(.system(size: 34))
                     .foregroundStyle(.white.opacity(0.9))
@@ -644,6 +645,12 @@ struct CaptureThumb: View {
         }
         .frame(height: 180)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .task(id: graded?.cropURL ?? graded?.fullURL ?? item.cropPhotoURL ?? item.fullPhotoURL) {
+            guard let url = graded?.cropURL ?? graded?.fullURL ?? item.cropPhotoURL ?? item.fullPhotoURL else { return }
+            let image = await Task.detached(priority: .utility) { (try? Data(contentsOf: url)).flatMap { PreparedStill.thumbnail($0, maxPixel: 420) } }.value
+            guard !Task.isCancelled else { return }; diskPhoto = image
+        }
+        .onDisappear { diskPhoto = nil; videoFrame = nil }
         .task(id: item.movieURL) {
             guard still == nil, let url = item.movieURL else { return }
             videoFrame = await VideoFrame.load(from: url, maxSide: 600)
@@ -688,11 +695,17 @@ enum StillVersion: String, CaseIterable, Identifiable {
 struct CaptureDetail: View {
     let store: CameraStore
     let item: CaptureItem
-    var graded: GradedStills?
+    var initialGraded: GradedStills?
+    var graded: GradedStills? { store.graded[AnyHashable(item.id)] ?? initialGraded }
     var info: ClipInfo?
+
+    init(store: CameraStore, item: CaptureItem, graded: GradedStills?, info: ClipInfo?) {
+        self.store = store; self.item = item; self.initialGraded = graded; self.info = info
+    }
 
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDelete = false
+    @State private var showPhotoEditor = false
 
     @State private var version: StillVersion = .graded
     @State private var master: AVPlayer?
@@ -700,7 +713,7 @@ struct CaptureDetail: View {
     @State private var gradedMaster: AVPlayer?
 
     private var showingGraded: Bool {
-        graded != nil && version == .graded
+        (store.graded[AnyHashable(item.id)] ?? graded) != nil && version == .graded
     }
 
     @State private var fullResolutionPreview: UIImage?
@@ -775,6 +788,16 @@ struct CaptureDetail: View {
                     labeled("Frame lines", image: crop)
                 }
 
+                if item.fullPhotoURL != nil || item.cropPhotoURL != nil {
+                    Button { showPhotoEditor = true } label: { Label("Develop photo", systemImage: "slider.horizontal.3") }
+                        .tint(Theme.gold)
+                    Text("Adjust brightness, color and the look. Your original stays safe.").font(.caption).foregroundStyle(.secondary)
+                }
+
+                if let live = item.livePhotoMovieURL {
+                    ShareLink(item: live) { Label("Share Live Photo motion", systemImage: "livephoto") }
+                    Text("The Live Photo plays in Photos when it was saved there. This shares its motion file separately.").font(.caption).foregroundStyle(.secondary)
+                }
                 if let raw = item.rawURL {
                     ShareLink(item: raw) { Label("Share RAW", systemImage: "square.and.arrow.up") }
                 }
@@ -837,7 +860,7 @@ struct CaptureDetail: View {
                 }
             }
         }
-        .task(id: showingGraded) {
+        .task(id: sharePhotoURL) {
             let full = fullPhotoURL; let crop = cropPhotoURL
             fullResolutionPreview = nil; cropResolutionPreview = nil
             let images = await Task.detached(priority: .userInitiated) {
@@ -848,6 +871,7 @@ struct CaptureDetail: View {
             guard !Task.isCancelled else { return }
             fullResolutionPreview = images.0; cropResolutionPreview = images.1
         }
+        .sheet(isPresented: $showPhotoEditor) { PhotoEditor(store: store, item: item) }
         .confirmationDialog(
             "Delete this capture from the gallery?",
             isPresented: $confirmDelete,

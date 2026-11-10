@@ -93,13 +93,18 @@ nonisolated struct ShootingPreset: Codable, Identifiable, Equatable {
     var focusStart: Float?; var focusEnd: Float?; var focusDuration: Double
     var audioInput: String?; var audioMonitoring: Bool
     var focusLens: Bool? = nil
+    var naturalPhoto: Bool? = nil
+    var livePhoto: Bool? = nil
+    var depthPortrait: Bool? = nil
     func matchesSettings(of other: Self) -> Bool {
         var normalized = self
         normalized.id = other.id
         normalized.name = other.name
         normalized.focusLens = normalized.focusLens ?? false
+        normalized.naturalPhoto = normalized.naturalPhoto ?? false; normalized.livePhoto = normalized.livePhoto ?? false; normalized.depthPortrait = normalized.depthPortrait ?? false
         var comparison = other
         comparison.focusLens = comparison.focusLens ?? false
+        comparison.naturalPhoto = comparison.naturalPhoto ?? false; comparison.livePhoto = comparison.livePhoto ?? false; comparison.depthPortrait = comparison.depthPortrait ?? false
         // Live auto readings may change without the user changing their setup.
         if normalized.isoAuto { normalized.iso = comparison.iso }
         if normalized.shutterAuto { normalized.shutter = comparison.shutter }

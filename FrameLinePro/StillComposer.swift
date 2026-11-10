@@ -718,8 +718,7 @@ nonisolated enum StillComposer {
         let target = request.saveTarget
         let graded = request.grades
 
-        let needsOriginalCrop = target == "FRAME"
-            || (target != "FULL" && graded == false)
+        let needsOriginalCrop = target != "FULL"
 
         let originalCrop: Data? = needsOriginalCrop
             ? (coversFrame
@@ -788,7 +787,7 @@ nonisolated enum StillComposer {
         default:
             return Result(
                 fullJPEG: imageData,
-                cropJPEG: graded ? nil : originalCrop,
+                cropJPEG: originalCrop,
                 gradedFull: gradedFull,
                 gradedCrop: gradedCrop
             )
