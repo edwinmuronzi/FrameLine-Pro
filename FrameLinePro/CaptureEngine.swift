@@ -4400,7 +4400,13 @@ nonisolated final class CaptureEngine: NSObject,
                     reader.add(output)
                     guard reader.startReading() else { throw NSError(domain: "Verification", code: 2) }
                     var count = 0, times: [Double] = []
-                    while let sample = output.copyNextSampleBuffer() { count += 1; times.append(CMSampleBufferGetPresentationTimeStamp(sample).seconds) }
+                    while let sample = output.copyNextSampleBuffer() {
+                        // Compressed readers can deliver marker samples with
+                        // invalid timestamps. They are not video frames.
+                        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                        guard pts.isNumeric, pts.seconds.isFinite else { continue }
+                        count += 1; times.append(pts.seconds)
+                    }
                     times.sort()
                     let start = times.first ?? 0
                     var longest = 0.0, buckets: [Int: Int] = [:]

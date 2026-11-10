@@ -235,6 +235,8 @@ The set is designed for the iPhone App Store screenshot slot; confirm [Apple’s
 
 See [the current comparison with Halide, No Fusion, Moment Pro Camera II and mood.camera](COMPETITOR_REVIEW.md) for remaining priorities.
 
+Recording reuses GPU resources and keeps processing queues bounded so work cannot build an unlimited preview delay. Scopes run separately from camera delivery, and both videos retain the selected grading, resolution and encoding quality. Heavy looks and longer recordings can still drop frames as the phone warms; sustained 30 fps is not guaranteed.
+
 See [validation results and remaining device checks](VALIDATION.md) for the tested scope and sustained thermal limits.
 
 ## Build and development
