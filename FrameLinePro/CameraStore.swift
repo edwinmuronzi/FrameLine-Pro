@@ -9,6 +9,7 @@ import UIKit
 final class CameraStore {
     let engine = CaptureEngine()
 
+    @ObservationIgnored private var finalizationActivity: CaptureSaveActivity?
     @ObservationIgnored private var preserveTask: Task<Void, Never>?
     var isFrontCamera = false
     var showShootingTools = false
@@ -22,7 +23,13 @@ final class CameraStore {
     var subjectTracking = false { didSet { configureAdvancedFraming() } }
     var trackedSubjectRect: CGRect?
     var trackingLost = false
-    var shootingPresets = ShootingPreset.load() { didSet { ShootingPreset.save(shootingPresets) } }
+    var selectedPresetID: UUID?
+    var shootingPresets = ShootingPreset.load() {
+        didSet {
+            ShootingPreset.save(shootingPresets)
+            if let selectedPresetID, !shootingPresets.contains(where: { $0.id == selectedPresetID }) { self.selectedPresetID = nil }
+        }
+    }
     var focusPullLensEnabled = false {
         didSet {
             guard focusPullLensEnabled != oldValue else { return }
@@ -193,6 +200,7 @@ final class CameraStore {
     var captureAngle: Double = 90
     private var deviceAngle: Double = 90
     private var watchingOrientation = false
+    @ObservationIgnored private var orientationObserver: NSObjectProtocol?
     private let motion = CMMotionManager()
 
     var isLandscape: Bool {
@@ -641,7 +649,7 @@ final class CameraStore {
             logProfile = .off
             subjectTracking = ProcessInfo.processInfo.arguments.contains("--verify-advanced-preview")
         }
-        if ProcessInfo.processInfo.arguments.contains("--verify-styled-recording") {
+        if (ProcessInfo.processInfo.arguments.contains("--verify-styled-recording") || ProcessInfo.processInfo.arguments.contains("--verify-efficiency") || ProcessInfo.processInfo.arguments.contains("--verify-interruption")) {
             mode = .video; dualShot = true; logProfile = .off
             look = FilmLook.lineup.first(where: { $0.id != "standard" }) ?? .standard
         }
@@ -789,8 +797,15 @@ final class CameraStore {
 
         refreshRecordingCodecs()
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--verify-styled-recording") {
+        if (ProcessInfo.processInfo.arguments.contains("--verify-styled-recording") || ProcessInfo.processInfo.arguments.contains("--verify-efficiency") || ProcessInfo.processInfo.arguments.contains("--verify-interruption")) {
             engine.verifyStyledRecording(style: styleParams)
+            if ProcessInfo.processInfo.arguments.contains("--verify-efficiency") {
+                UIApplication.shared.isIdleTimerDisabled = true
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(70))
+                    UIApplication.shared.isIdleTimerDisabled = false
+                }
+            }
         }
         if ProcessInfo.processInfo.arguments.contains("--verify-focus-pull") {
             Task { @MainActor [weak self] in
@@ -809,6 +824,10 @@ final class CameraStore {
             }
         }
         if ProcessInfo.processInfo.arguments.contains("--show-lut-panel") { showLUTPanel = true }
+        if ProcessInfo.processInfo.arguments.contains("--show-selected-preset") {
+            saveShootingPreset(named: "Everyday")
+            showLUTPanel = true
+        }
         if ProcessInfo.processInfo.arguments.contains("--show-shooting-tools") {
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(700))
@@ -1249,7 +1268,7 @@ final class CameraStore {
     private func observePreservedSettings() {
         withObservationTracking {
             _ = currentShootingPreset(named: "Last session")
-            _ = cleanFeed; _ = showManual; _ = showLUTPanel; _ = chipPanel; _ = isFrontCamera; _ = preserveSettings
+            _ = selectedPresetID; _ = cleanFeed; _ = showManual; _ = showLUTPanel; _ = chipPanel; _ = isFrontCamera; _ = preserveSettings
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -1259,9 +1278,16 @@ final class CameraStore {
                     guard !Task.isCancelled else { return }
                     self?.savePreserved()
                 }
+                self.reconcileSelectedPreset()
                 self.observePreservedSettings()
             }
         }
+    }
+
+    private func reconcileSelectedPreset() {
+        guard let id = selectedPresetID,
+              let preset = shootingPresets.first(where: { $0.id == id }) else { return }
+        if !currentShootingPreset(named: "").matchesSettings(of: preset) { selectedPresetID = nil }
     }
 
     func savePreserved() {
@@ -1271,6 +1297,7 @@ final class CameraStore {
         if let data = try? JSONEncoder().encode(currentShootingPreset(named: "Last session")) {
             defaults.set(data, forKey: "frameline.lastSession")
         }
+        defaults.set(selectedPresetID?.uuidString, forKey: "frameline.p.selectedPreset")
         defaults.set(isFrontCamera, forKey: "frameline.p.front")
         defaults.set(cleanFeed, forKey: "frameline.p.cleanFeed")
         defaults.set(showManual, forKey: "frameline.p.showManual")
@@ -1296,6 +1323,7 @@ final class CameraStore {
             isFrontCamera = defaults.bool(forKey: "frameline.p.front")
             engine.restoreCamera(zoom: preset.lens, front: isFrontCamera)
             applyShootingPreset(preset)
+            selectedPresetID = defaults.string(forKey: "frameline.p.selectedPreset").flatMap(UUID.init(uuidString:))
             cleanFeed = defaults.bool(forKey: "frameline.p.cleanFeed")
             showManual = defaults.bool(forKey: "frameline.p.showManual")
             showLUTPanel = defaults.bool(forKey: "frameline.p.lutPanel")
@@ -1700,7 +1728,7 @@ final class CameraStore {
 
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
 
-        NotificationCenter.default.addObserver(
+        orientationObserver = NotificationCenter.default.addObserver(
             forName: UIDevice.orientationDidChangeNotification,
             object: nil,
             queue: .main
@@ -1711,6 +1739,32 @@ final class CameraStore {
         }
 
         deviceOrientationChanged()
+    }
+
+    func suspendBackgroundWork() {
+        savePreserved()
+        engine.setAppForeground(false)
+        if isRecording {
+            let activity = CaptureSaveActivity()
+            activity.begin()
+            finalizationActivity = activity
+        }
+        storageTask?.cancel(); storageTask = nil
+        motion.stopDeviceMotionUpdates()
+        motion.stopAccelerometerUpdates()
+        if let orientationObserver {
+            NotificationCenter.default.removeObserver(orientationObserver)
+            self.orientationObserver = nil
+            UIDevice.current.endGeneratingDeviceOrientationNotifications()
+        }
+        watchingOrientation = false
+    }
+
+    func resumeForegroundWork() {
+        guard bound else { return }
+        finalizationActivity?.end(); finalizationActivity = nil
+        startStorageUpdates()
+        watchOrientation()
     }
 
     // How far the phone is from level, to the nearest quarter turn.
@@ -2032,7 +2086,7 @@ final class CameraStore {
                     CameraStore.readStorage()
                 }.value
 
-                guard let self else { return }
+                guard !Task.isCancelled, let self else { return }
 
                 storageTotalBytes = figures.total
                 storageFreeBytes = figures.free
@@ -2552,7 +2606,9 @@ final class CameraStore {
         guard !isRecording else { return }
         let trimmed = String(requested.trimmingCharacters(in: .whitespacesAndNewlines).prefix(48))
         let name = trimmed.isEmpty ? "Setup \(shootingPresets.count + 1)" : trimmed
-        shootingPresets.append(currentShootingPreset(named: name))
+        let preset = currentShootingPreset(named: name)
+        shootingPresets.append(preset)
+        selectedPresetID = preset.id
         showToast("Saved \(name).")
     }
 
@@ -2611,6 +2667,7 @@ final class CameraStore {
         framingChanged(); reapplyControls(); configureAdvancedFraming()
         if focusAuto { engine.setFocusAuto() } else { updateFocus() }
         applyingShootingPreset = false
+        selectedPresetID = shootingPresets.contains(where: { $0.id == preset.id }) ? preset.id : nil
         refreshRecordingCodecs()
         showToast("Loaded \(preset.name)." + (missing.isEmpty ? "" : " " + missing.joined(separator: "; ") + "."))
     }
@@ -2778,7 +2835,7 @@ final class CameraStore {
             )
 
         case .movie(let primary, let secondary, let kind, let recordingID, let baked):
-
+            defer { finalizationActivity?.end(); finalizationActivity = nil }
             let detail = movieDetail(kind: kind)
             let masterURL = persist(url: primary, ext: "mov")
 
@@ -2835,6 +2892,7 @@ final class CameraStore {
             }
 
         case .message(let text):
+            if !isRecording { finalizationActivity?.end(); finalizationActivity = nil }
             showToast(text)
 
         case .exposureSample(let iso, let incomingShutter):
@@ -3106,8 +3164,11 @@ final class CameraStore {
         _ work: @escaping () async -> Bool
     ) {
         let previous = photosSaveTask
+        let activity = CaptureSaveActivity()
+        activity.begin()
 
         photosSaveTask = Task { [weak self] in
+            defer { activity.end() }
             await previous?.value
 
             guard let self else { return }

@@ -77,7 +77,7 @@ nonisolated final class ReelTrackingState: @unchecked Sendable {
     var current: CGPoint { lock.lock(); defer { lock.unlock() }; return center }
 }
 
-nonisolated struct ShootingPreset: Codable, Identifiable {
+nonisolated struct ShootingPreset: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
     var mode: String; var format: String; var saveTarget: String; var aspect: String
@@ -93,6 +93,21 @@ nonisolated struct ShootingPreset: Codable, Identifiable {
     var focusStart: Float?; var focusEnd: Float?; var focusDuration: Double
     var audioInput: String?; var audioMonitoring: Bool
     var focusLens: Bool? = nil
+    func matchesSettings(of other: Self) -> Bool {
+        var normalized = self
+        normalized.id = other.id
+        normalized.name = other.name
+        normalized.focusLens = normalized.focusLens ?? false
+        var comparison = other
+        comparison.focusLens = comparison.focusLens ?? false
+        // Live auto readings may change without the user changing their setup.
+        if normalized.isoAuto { normalized.iso = comparison.iso }
+        if normalized.shutterAuto { normalized.shutter = comparison.shutter }
+        if normalized.focusAuto { normalized.focus = comparison.focus }
+        if !normalized.whiteBalanceLocked { normalized.whiteBalance = comparison.whiteBalance }
+        return normalized == comparison
+    }
+
     static func load() -> [Self] {
         guard let data = UserDefaults.standard.data(forKey: "frameline.shootingPresets") else { return [] }
         return (try? JSONDecoder().decode([Self].self, from: data)) ?? []

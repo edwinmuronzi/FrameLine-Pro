@@ -54,10 +54,12 @@ struct CameraScreen: View {
             }
 
             if phase == .active {
+                store.resumeForegroundWork()
                 store.engine.start()
                 store.refreshRecordingCodecs()
-            } else if phase == .background, store.isRecording == false {
-                store.engine.stop()
+            } else if phase == .background {
+                store.suspendBackgroundWork()
+                if !store.isRecording { store.engine.stop() }
             }
         }
         .sheet(isPresented: $showGallery) {
@@ -1939,6 +1941,16 @@ struct AidsBar<Timecode: View>: View {
             ExposureAidsPanel(store: store, dismiss: { showAids = false })
                 .presentationCompactAdaptation(.popover)
         }
+        #if DEBUG
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("--show-aids-panel") {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    showAids = true
+                }
+            }
+        }
+        #endif
         .accessibilityLabel("Exposure aids and hide controls")
     }
 
@@ -2678,7 +2690,7 @@ struct LUTPanel: View {
                     .disabled(store.isRecording)
                     chip("PRESETS", selected: false) { managingPresets = true }
                     ForEach(store.shootingPresets) { preset in
-                        chip(preset.name, selected: false) { store.applyShootingPreset(preset) }
+                        chip(preset.name, selected: store.selectedPresetID == preset.id) { store.applyShootingPreset(preset) }
                             .disabled(store.isRecording)
                             .contextMenu {
                                 Button("Rename", systemImage: "pencil") { newName = preset.name; renaming = preset.id }

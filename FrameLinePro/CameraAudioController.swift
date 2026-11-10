@@ -6,21 +6,32 @@ nonisolated final class CameraAudioController: @unchecked Sendable {
     var onMeter: (@Sendable (Float, Bool) -> Void)?
     private let lock = NSLock()
     private var monitoring = false
+    private var metering = false
     private var headphones = false
-    private let renderer = AVSampleBufferAudioRenderer()
-    private let synchronizer = AVSampleBufferRenderSynchronizer()
+    private lazy var renderer = AVSampleBufferAudioRenderer()
+    private lazy var synchronizer: AVSampleBufferRenderSynchronizer = {
+        let synchronizer = AVSampleBufferRenderSynchronizer()
+        synchronizer.addRenderer(renderer)
+        return synchronizer
+    }()
     private var started = false
     private var lastMeter = 0.0
     private var clippedUntil = 0.0
 
-    init() { synchronizer.addRenderer(renderer) }
+    init() {}
 
     func configure(monitoring: Bool, headphones: Bool) {
         lock.lock(); self.monitoring = monitoring; self.headphones = headphones; lock.unlock()
     }
 
+    func setMetering(_ enabled: Bool) {
+        lock.lock(); metering = enabled; lock.unlock()
+    }
+
     // Called on the engine's dedicated audio queue.
     func consume(_ sample: CMSampleBuffer) {
+        lock.lock(); let play = monitoring && headphones; let measure = metering || play; lock.unlock()
+        guard measure || play else { stop(); return }
         let now = ProcessInfo.processInfo.systemUptime
         if let level = Self.level(in: sample) {
             if level.peak >= 0.98 { clippedUntil = now + 0.7 }
@@ -29,16 +40,18 @@ nonisolated final class CameraAudioController: @unchecked Sendable {
                 onMeter?(Float(20 * log10(max(level.rms, 0.00000001))), now < clippedUntil)
             }
         }
-        lock.lock(); let play = monitoring && headphones; lock.unlock()
+        guard play else { stop(); return }
         #if os(iOS)
         let safeOutputs: [AVAudioSession.Port] = [.headphones, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .usbAudio, .lineOut]
         let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        guard play, !outputs.isEmpty, outputs.allSatisfy({ safeOutputs.contains($0.portType) }) else {
-            renderer.volume = 0; stop(); return
+        guard !outputs.isEmpty, outputs.allSatisfy({ safeOutputs.contains($0.portType) }) else {
+            if started { renderer.volume = 0 }
+            stop(); return
         }
         #else
         guard play else { stop(); return }
         #endif
+        _ = synchronizer
         renderer.volume = 1
         if renderer.status == .failed { renderer.flush(); started = false }
         guard renderer.isReadyForMoreMediaData else { return }

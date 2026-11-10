@@ -278,11 +278,16 @@ nonisolated final class CaptureEngine: NSObject,
     private var trackingEnabled = false
     private var anamorphicPreviewPool: CVPixelBufferPool?
     private var previewPoolSizes: [ObjectIdentifier: CGSize] = [:]
+    private var previewFormats: [ObjectIdentifier: CMVideoFormatDescription] = [:]
+    private let previewColorSpace = CGColorSpaceCreateDeviceRGB()
     private let cameraAudio = CameraAudioController()
     private let audioQueue = DispatchQueue(label: "frameline.audio", qos: .userInteractive)
     private var headphonesMonitoring = false
     private var preferredMicrophone: String?
     private var routeObserver: NSObjectProtocol?
+    private var sessionObservers: [NSObjectProtocol] = []
+    private var sessionWanted = false
+    private var needsSessionRebuild = false
     var onLenses: (@Sendable ([LensOption], String?, Bool) -> Void)?
 
     private let queue = DispatchQueue(label: "frameliner.capture")
@@ -428,6 +433,7 @@ nonisolated final class CaptureEngine: NSObject,
     private var lastLive: LiveValues?
 
     private lazy var ciContext = CIContext(options: [
+        .cacheIntermediates: false,
         .workingColorSpace: NSNull(),
         .outputColorSpace: NSNull()
     ])
@@ -447,6 +453,8 @@ nonisolated final class CaptureEngine: NSObject,
             self?.queue.async { [weak self] in self?.publishAudioState() }
         }
 
+        installSessionObservers()
+
         // A scaled analysis stream that crashed once is switched off.
         let defaults = UserDefaults.standard
 
@@ -465,18 +473,71 @@ nonisolated final class CaptureEngine: NSObject,
         analysisUnscaled = defaults.bool(forKey: "frameline.scaleDisabled")
     }
 
+    deinit {
+        liveTimer?.cancel()
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
+        sessionObservers.forEach { NotificationCenter.default.removeObserver($0) }
+    }
+
+    private func installSessionObservers() {
+        let center = NotificationCenter.default
+        sessionObservers.append(center.addObserver(forName: AVCaptureSession.wasInterruptedNotification, object: session, queue: nil) { [weak self] _ in
+            self?.queue.async { [weak self] in
+                guard let self else { return }
+                self.liveTimer?.cancel(); self.liveTimer = nil
+                self.audioQueue.async { [weak self] in self?.cameraAudio.stop() }
+                if self.currentLiveWriter() != nil || self.currentWriter() != nil || self.movieOutput.isRecording {
+                    self.emit(.message("Camera interrupted. Finishing the current recording."))
+                    self.stopRecording()
+                }
+            }
+        })
+        sessionObservers.append(center.addObserver(forName: AVCaptureSession.interruptionEndedNotification, object: session, queue: nil) { [weak self] _ in
+            self?.queue.async { [weak self] in
+                guard let self, self.sessionWanted else { return }
+                self.startOnQueue()
+            }
+        })
+        sessionObservers.append(center.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil) { [weak self] notification in
+            let reset = (notification.userInfo?[AVCaptureSessionErrorKey] as? AVError)?.code == .mediaServicesWereReset
+            self?.queue.async { [weak self] in
+                guard let self else { return }
+                if reset {
+                    self.needsSessionRebuild = true
+                    if self.currentLiveWriter() != nil || self.currentWriter() != nil || self.movieOutput.isRecording {
+                        self.emit(.message("Camera service restarted. Finishing the current recording."))
+                        self.stopRecording()
+                    } else if self.sessionWanted { self.startOnQueue() }
+                } else {
+                    self.emit(.message("The camera stopped unexpectedly. Return to the app to resume."))
+                }
+            }
+        })
+    }
+
     // MARK: - Session Controls
 
     func start() {
         queue.async { [weak self] in
+            self?.sessionWanted = true
             self?.startOnQueue()
         }
     }
 
+    func setAppForeground(_ foreground: Bool) {
+        queue.async { [weak self] in self?.sessionWanted = foreground }
+    }
+
     func stop() {
         queue.async { [weak self] in
-            guard let self, self.session.isRunning else { return }
-            self.session.stopRunning()
+            guard let self else { return }
+            self.sessionWanted = false
+            self.liveTimer?.cancel(); self.liveTimer = nil
+            if self.session.isRunning { self.session.stopRunning() }
+            self.audioQueue.async { [weak self] in self?.cameraAudio.stop() }
+            if self.currentLiveWriter() == nil, self.currentWriter() == nil {
+                self.analysisQueue.async { [weak self] in self?.ciContext.clearCaches() }
+            }
         }
     }
 
@@ -1747,6 +1808,12 @@ nonisolated final class CaptureEngine: NSObject,
     // MARK: - Session Setup
 
     private func startOnQueue() {
+        guard !session.isInterrupted else { return }
+        if needsSessionRebuild {
+            guard currentLiveWriter() == nil, currentWriter() == nil, !movieOutput.isRecording else { return }
+            needsSessionRebuild = false
+            rebuildSingle()
+        }
         startLiveTimer()
 
         if session.isRunning { return }
@@ -3186,7 +3253,7 @@ nonisolated final class CaptureEngine: NSObject,
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
 
-        timer.schedule(deadline: .now() + 0.5, repeating: 0.1)
+        timer.schedule(deadline: .now() + 0.5, repeating: 0.1, leeway: .milliseconds(10))
 
         timer.setEventHandler { [weak self] in
             self?.tick()
@@ -3309,6 +3376,7 @@ nonisolated final class CaptureEngine: NSObject,
         settings: RecordingSettings
     ) {
         queue.async { [weak self] in
+            self?.cameraAudio.setMetering(video)
             self?.previewVideo = video
             self?.previewLog = log
             self?.previewSettings = settings
@@ -4164,33 +4232,85 @@ nonisolated final class CaptureEngine: NSObject,
         previewProbeMeters[index].count += 1
     }
 
+    private var verificationMovieID: UUID?
+
+    private func verifyTemporaryMovies(_ urls: [URL]) {
+        Task.detached(priority: .utility) {
+            for url in urls {
+                do {
+                    let asset = AVURLAsset(url: url)
+                    guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw NSError(domain: "Verification", code: 1) }
+                    let size = try await track.load(.naturalSize)
+                    let duration = try await asset.load(.duration).seconds
+                    let reader = try AVAssetReader(asset: asset)
+                    let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+                    reader.add(output)
+                    guard reader.startReading() else { throw NSError(domain: "Verification", code: 2) }
+                    var count = 0
+                    while output.copyNextSampleBuffer() != nil { count += 1 }
+                    NSLog("STYLE_FILE_VERIFY %@ size=%@ frames=%ld duration=%.2f valid=%d", url.lastPathComponent, String(describing: size), count, duration, reader.status == .completed && count > 0 ? 1 : 0)
+                } catch { NSLog("STYLE_FILE_VERIFY FAIL %@", error.localizedDescription) }
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+    }
+
     func verifyStyledRecording(style: StyleParams) {
         queue.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let self, let device = self.videoDevice else { return }
             self.recordingStyle = style
             self.recordingCube = nil
-            let now = ProcessInfo.processInfo.systemUptime
+            let soak = ProcessInfo.processInfo.arguments.contains("--verify-efficiency")
+            let interrupt = ProcessInfo.processInfo.arguments.contains("--verify-interruption")
+            let duration = soak ? 60.0 : (ProcessInfo.processInfo.arguments.contains("--verify-throughput") ? 10.0 : 2.0)
+            if soak { NSLog("EFFICIENCY_VERIFY starting 60s, thermal=%ld", ProcessInfo.processInfo.thermalState.rawValue) }
             self.monitorLock.lock()
+            let now = ProcessInfo.processInfo.systemUptime
             self.previewProbeMeters = [PreviewProbeMeter(last: now), PreviewProbeMeter(last: now)]
             self.sourceProbeMeter = PreviewProbeMeter(last: now)
             self.previewProbeActive = true
             self.monitorLock.unlock()
             let format = device.activeFormat
             let zoom = device.videoZoomFactor
-            guard self.startLiveRecording(dual: true, recordingID: nil, codec: RecordingCodec(rawValue: AVVideoCodecType.hevc.rawValue), bitrate: nil),
+            let id = UUID()
+            self.verificationMovieID = id
+            guard self.startLiveRecording(dual: true, recordingID: id, codec: RecordingCodec(rawValue: AVVideoCodecType.hevc.rawValue), bitrate: nil),
                   let writer = self.currentLiveWriter() else { NSLog("STYLE_VERIFY failed to start"); return }
-            self.queue.asyncAfter(deadline: .now() + 2) { [weak self] in
-                guard let self else { return }
+            self.emit(.recording(true))
+            if soak {
+                self.queue.asyncAfter(deadline: .now() + 30) {
+                    NSLog("EFFICIENCY_VERIFY halfway thermal=%ld", ProcessInfo.processInfo.thermalState.rawValue)
+                }
+            }
+            if interrupt {
+                self.queue.asyncAfter(deadline: .now() + 1) {
+                    NotificationCenter.default.post(name: AVCaptureSession.wasInterruptedNotification, object: self.session)
+                }
+                self.queue.asyncAfter(deadline: .now() + 1.5) {
+                    NotificationCenter.default.post(name: AVCaptureSession.interruptionEndedNotification, object: self.session)
+                }
+                self.queue.asyncAfter(deadline: .now() + 2) {
+                    let preserved = self.videoDevice === device && device.activeFormat === format && self.currentLiveWriter() == nil && self.session.isRunning
+                    NSLog("INTERRUPTION_VERIFY resume=%@", preserved ? "PASS" : "FAIL")
+                }
+                return
+            }
+            self.queue.asyncAfter(deadline: .now() + duration) { [weak self] in
+                guard let self, self.currentLiveWriter() === writer else { NSLog("STYLE_VERIFY interrupted before completion"); return }
+                if soak { NSLog("EFFICIENCY_VERIFY finished thermal=%ld", ProcessInfo.processInfo.thermalState.rawValue) }
                 self.monitorLock.lock()
                 self.previewProbeActive = false
                 let meters = self.previewProbeMeters
+                let sourceFrames = self.sourceProbeMeter.count
                 self.monitorLock.unlock()
+                NSLog("STYLE_SOURCE_VERIFY frames=%ld deviceMinFrameDuration=%.4f", sourceFrames, device.activeVideoMinFrameDuration.seconds)
                 NSLog("STYLE_VERIFY previews frames=%@ gapsMs=%@", String(describing: meters.map { $0.count }), String(describing: meters.map { Int($0.longestGap * 1000) }))
                 self.writerQueue.async {
                     writer.finish { success in
                         NSLog("STYLE_VERIFY files=%@", success ? "PASS" : "FAIL")
                         self.queue.async {
                             self.writerLock.lock(); self.liveWriter = nil; self.writerLock.unlock()
+                            self.verificationMovieID = nil
                             if !writer.usesAnalysisStream {
                                 self.session.beginConfiguration()
                                 self.session.removeOutput(self.writerVideoOutput)
@@ -4199,10 +4319,10 @@ nonisolated final class CaptureEngine: NSObject,
                             self.syncAnalysisOutput()
                             self.session.stopRunning()
                             self.startOnQueue()
+                            self.emit(.recording(false))
                             let same = self.videoDevice === device && device.activeFormat === format && abs(device.videoZoomFactor - zoom) < 0.01
                             NSLog("RESUME_VERIFY preserved input/format/zoom=%@", same ? "PASS" : "FAIL")
-                            try? FileManager.default.removeItem(at: writer.primary)
-                            if let secondary = writer.secondary { try? FileManager.default.removeItem(at: secondary) }
+                            self.verifyTemporaryMovies([writer.primary] + [writer.secondary].compactMap { $0 })
                         }
                     }
                 }
@@ -4405,6 +4525,7 @@ nonisolated final class CaptureEngine: NSObject,
                         self.session.commitConfiguration()
                     }
                     self.syncAnalysisOutput()
+                    if self.needsSessionRebuild, self.sessionWanted { self.startOnQueue() }
                     self.emit(.recording(false))
                     if success {
                         self.emit(.movie(primary: writer.primary, secondary: writer.secondary, kind: writer.secondary == nil ? .none : .verticalCrop, recordingID: writer.recordingID, baked: true))
@@ -4548,7 +4669,7 @@ nonisolated final class CaptureEngine: NSObject,
 
                 self.finishedPrimary = true
                 self.finishedSecondary = true
-
+                if self.needsSessionRebuild, self.sessionWanted { self.startOnQueue() }
                 self.emit(.recording(false))
                 self.finishMovies()
             }
@@ -5126,7 +5247,7 @@ nonisolated final class CaptureEngine: NSObject,
             .cropped(to: frame)
 
         if dualPreview {
-            renderDualPreview(result)
+            renderDualPreview(result, resolveStyle: useCube || style != nil)
             return
         }
 
@@ -5220,15 +5341,19 @@ nonisolated final class CaptureEngine: NSObject,
         }
     }
 
-    private func renderDualPreview(_ portrait: CIImage) {
+    private func renderDualPreview(_ portrait: CIImage, resolveStyle: Bool = true) {
         let image = uprightImage(portrait).transformed(by: framingSnapshot().transform)
-        renderDualUpright(image)
+        renderDualUpright(image, resolveStyle: resolveStyle)
     }
 
     private let dualFrameRenderer = CameraFrameRenderer()
 
-    private func renderDualUpright(_ graded: CIImage) {
-        guard let image = dualFrameRenderer.materialize(graded, context: ciContext) else { return }
+    private func renderDualUpright(_ graded: CIImage, resolveStyle: Bool = true) {
+        let image: CIImage
+        if resolveStyle {
+            guard let complete = dualFrameRenderer.materialize(graded, context: ciContext) else { return }
+            image = complete
+        } else { image = graded }
         renderPreview(image, size: CGSize(width: 640, height: 360), pool: &landscapePreviewPool, layer: landscapeMonitorLayer)
         renderPreview(image, size: CGSize(width: 540, height: 960), pool: &reelPreviewPool, layer: monitorLayer, center: reelTrackingState.advance())
         monitorLock.lock()
@@ -5244,7 +5369,7 @@ nonisolated final class CaptureEngine: NSObject,
             .transformed(by: CGAffineTransform(translationX: -crop.minX, y: -crop.minY))
             .transformed(by: CGAffineTransform(scaleX: size.width / crop.width, y: size.height / crop.height))
         let key = ObjectIdentifier(layer)
-        if previewPoolSizes[key] != size { pool = nil; previewPoolSizes[key] = size }
+        if previewPoolSizes[key] != size { pool = nil; previewPoolSizes[key] = size; previewFormats[key] = nil }
         if pool == nil {
             let attributes: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA, kCVPixelBufferWidthKey as String: Int(size.width), kCVPixelBufferHeightKey as String: Int(size.height), kCVPixelBufferIOSurfacePropertiesKey as String: [:]]
             CVPixelBufferPoolCreate(nil, nil, attributes as CFDictionary, &pool)
@@ -5252,10 +5377,13 @@ nonisolated final class CaptureEngine: NSObject,
         guard let pool else { return }
         var buffer: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let buffer else { return }
-        ciContext.render(output, to: buffer, bounds: CGRect(origin: .zero, size: size), colorSpace: CGColorSpaceCreateDeviceRGB())
-        var format: CMVideoFormatDescription?
-        CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: buffer, formatDescriptionOut: &format)
-        guard let format else { return }
+        ciContext.render(output, to: buffer, bounds: CGRect(origin: .zero, size: size), colorSpace: previewColorSpace)
+        if previewFormats[key] == nil {
+            var format: CMVideoFormatDescription?
+            CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: buffer, formatDescriptionOut: &format)
+            previewFormats[key] = format
+        }
+        guard let format = previewFormats[key] else { return }
         var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()), decodeTimeStamp: .invalid)
         var sample: CMSampleBuffer?
         CMSampleBufferCreateReadyWithImageBuffer(allocator: nil, imageBuffer: buffer, formatDescription: format, sampleTiming: &timing, sampleBufferOut: &sample)
@@ -5385,6 +5513,15 @@ nonisolated final class CaptureEngine: NSObject,
     }
 
     private func emit(_ event: EngineEvent) {
+        #if DEBUG
+        if case .movie(let primary, let secondary, _, let id, _) = event,
+           let verificationMovieID, id == verificationMovieID {
+            self.verificationMovieID = nil
+            NSLog("INTERRUPTION_VERIFY finalized diagnostic recording")
+            verifyTemporaryMovies([primary] + [secondary].compactMap { $0 })
+            return
+        }
+        #endif
         let handler = onEvent
 
         Task { @MainActor in

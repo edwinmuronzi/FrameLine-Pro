@@ -297,15 +297,15 @@ struct ExposureAidsPanel: View {
     var dismiss: () -> Void
     var body: some View {
         ScrollView {
-            VStack(spacing: 0) {
-                Toggle("Waveform", isOn: $store.showWaveform)
-                Toggle("Zebra", isOn: $store.showZebra)
-                Toggle("Focus peaking", isOn: $store.showPeaking)
-                Toggle("False color", isOn: $store.showFalseColor)
+            VStack(spacing: 6) {
+                compactToggle("Waveform", isOn: $store.showWaveform)
+                compactToggle("Zebra", isOn: $store.showZebra)
+                compactToggle("Focus peaking", isOn: $store.showPeaking)
+                compactToggle("False color", isOn: $store.showFalseColor)
                 if store.mode == .video, store.dualShot {
                     Divider().padding(.vertical, 6)
-                    Toggle("Track reel subject", isOn: $store.subjectTracking)
-                    Toggle("Reel safe zones", isOn: $store.framingOptions.safeZones)
+                    compactToggle("Track reel subject", isOn: $store.subjectTracking)
+                    compactToggle("Reel safe zones", isOn: $store.framingOptions.safeZones)
                 }
                 Divider().padding(.vertical, 6)
                 if store.focusPullRunning {
@@ -328,8 +328,32 @@ struct ExposureAidsPanel: View {
             .font(.subheadline)
             .padding(16)
         }
-        .frame(width: 290, height: store.mode == .video && store.dualShot ? 390 : 310)
+        .frame(width: 290, height: store.mode == .video && store.dualShot ? 450 : 340)
     }
+    private func compactToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            Haptics.tick()
+            isOn.wrappedValue.toggle()
+        } label: {
+            HStack(spacing: 16) {
+                Text(title).foregroundStyle(.primary)
+                Spacer(minLength: 12)
+                ZStack(alignment: isOn.wrappedValue ? .trailing : .leading) {
+                    Capsule().fill(isOn.wrappedValue ? Theme.gold : Color.secondary.opacity(0.3))
+                    Circle().fill(.white).frame(width: 18, height: 18).padding(3)
+                }
+                .frame(width: 42, height: 24)
+                .animation(.easeInOut(duration: 0.16), value: isOn.wrappedValue)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
+        .accessibilityAddTraits(isOn.wrappedValue ? [.isSelected] : [])
+    }
+
     private func action(_ title: String, icon: String, perform: @escaping () -> Void) -> some View {
         Button(action: perform) {
             Label(title, systemImage: icon).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())

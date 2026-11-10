@@ -25,10 +25,14 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
     private let context = CIContext(options: [.cacheIntermediates: false, .workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     private var pools: [CVPixelBufferPool] = []
+    private var formats: [CMVideoFormatDescription?] = []
     private let gradedFrameRenderer = CameraFrameRenderer()
     private var finishing = false
     private var failed = false
     private var frames = 0
+    #if DEBUG
+    private var reportedSource = false
+    #endif
 
     init?(primary: URL, secondary: URL?, recordingID: UUID?, fps: Double,
           audioSettings: [String: Any]?, cube: Data?, cubeSize: Int,
@@ -53,6 +57,7 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
             ? min(1, 3840 / max(cropped.width, cropped.height), sqrt(3840 * 2160 / (cropped.width * cropped.height))) : 1
         let output = CGSize(width: max(2, Int(cropped.width * scale) / 2 * 2), height: max(2, Int(cropped.height * scale) / 2 * 2))
         sizes = secondary == nil ? [output] : [CGSize(width: 1920, height: 1080), CGSize(width: 1080, height: 1920)]
+        formats = Array(repeating: nil, count: sizes.count)
         writers = ([primary] + [secondary].compactMap { $0 }).map {
             LogWriter(url: $0, codec: codec, bitrate: bitrate, fps: fps, audioSettings: audioSettings)
         }
@@ -83,6 +88,12 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
     func appendVideo(_ sample: CMSampleBuffer) {
         guard !finishing, !failed, let buffer = CMSampleBufferGetImageBuffer(sample) else { return }
         guard writers.allSatisfy({ $0.canAcceptVideo }) else { return }
+        #if DEBUG
+        if !reportedSource {
+            reportedSource = true
+            NSLog("LIVE_SOURCE_VERIFY %ldx%ld analysis=%d", CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer), usesAnalysisStream ? 1 : 0)
+        }
+        #endif
         let original = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()]).oriented(sourceOrientation)
         let full = framing.saveDesqueezed ? original.transformed(by: framing.transform) : original
         let source = full.cropped(to: Self.cropRect(in: full.extent, viewRect: frameCrop, viewRatio: viewRatio))
@@ -105,8 +116,12 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
             let attributes = [kCVPixelBufferPoolAllocationThresholdKey as String: 8] as CFDictionary
             guard CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(nil, pools[index], attributes, &destination) == kCVReturnSuccess, let destination else { return }
             context.render(output, to: destination, bounds: CGRect(origin: .zero, size: size), colorSpace: colorSpace)
-            var format: CMVideoFormatDescription?
-            guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: destination, formatDescriptionOut: &format) == noErr, let format else { failed = true; return }
+            if formats[index] == nil {
+                var format: CMVideoFormatDescription?
+                guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: destination, formatDescriptionOut: &format) == noErr, let format else { failed = true; return }
+                formats[index] = format
+            }
+            guard let format = formats[index] else { failed = true; return }
             var timing = CMSampleTimingInfo(duration: CMSampleBufferGetDuration(sample), presentationTimeStamp: CMSampleBufferGetPresentationTimeStamp(sample), decodeTimeStamp: .invalid)
             var frame: CMSampleBuffer?
             guard CMSampleBufferCreateReadyWithImageBuffer(allocator: nil, imageBuffer: destination, formatDescription: format, sampleTiming: &timing, sampleBufferOut: &frame) == noErr, let frame else { failed = true; return }
