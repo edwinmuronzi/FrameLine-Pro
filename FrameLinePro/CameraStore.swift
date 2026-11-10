@@ -14,6 +14,10 @@ final class CameraStore {
     var showWelcome = false
     var requestGallery = false
     var reviewingCaptures = false
+    var deletingGallery = false
+    #if DEBUG
+    var rejectGalleryDeletionForVerification = false
+    #endif
     var viewfinderShortcuts: [ViewfinderShortcut] = {
         let saved = UserDefaults.standard.stringArray(forKey: "frameline.shortcuts.v1")?.compactMap(ViewfinderShortcut.init(rawValue:))
         return saved?.count == 3 ? saved! : [.timelapse, .magnify, .timer]
@@ -2823,33 +2827,48 @@ final class CameraStore {
         try? FileManager.default.removeItem(at: url)
     }
 
-    func delete(_ item: CaptureItem) {
-        let stillFiles = [item.fullPhotoURL, item.cropPhotoURL, item.livePhotoMovieURL, item.depthMaskURL, graded[AnyHashable(item.id)]?.fullURL, graded[AnyHashable(item.id)]?.cropURL].compactMap { $0 }
-        for file in stillFiles { try? FileManager.default.removeItem(at: file) }
-        captures.removeAll { $0.id == item.id }
-        if let url = graded[AnyHashable(item.id)]?.movie {
-            try? FileManager.default.removeItem(at: url)
-        }
+    func delete(_ item: CaptureItem) { deleteCaptures([item.id]) }
 
-        graded[AnyHashable(item.id)] = nil
-        clipInfo[AnyHashable(item.id)] = nil
-        photoEdits[item.id] = nil
+    func deleteCaptures(_ ids: Set<UUID>) {
+        guard !deletingGallery else { return }
+        let ids = ids.subtracting(editingPhotos)
+        let removed = captures.filter { ids.contains($0.id) }
+        guard !removed.isEmpty else { return }
+        deletingGallery = true
+        let keys = Set(ids.map(AnyHashable.init))
+        let grades = graded.filter { keys.contains($0.key) }
+        let clips = clipInfo.filter { keys.contains($0.key) }
+        let edits = photoEdits.filter { ids.contains($0.key) }
+        let files = Set(removed.flatMap { item -> [URL] in
+            let grade = graded[AnyHashable(item.id)]
+            return [item.fullPhotoURL, item.cropPhotoURL, item.rawURL, item.movieURL, item.storiesURL, item.livePhotoMovieURL, item.depthMaskURL,
+                    grade?.fullURL, grade?.cropURL, grade?.movie, grade?.storiesMovie].compactMap { $0 }.filter { $0.path != "/dev/null" }
+        })
+        captures.removeAll { ids.contains($0.id) }
+        for id in ids { graded[AnyHashable(id)] = nil; clipInfo[AnyHashable(id)] = nil; photoEdits[id] = nil }
         persistLibrary()
-
-        if let url = item.movieURL,
-           url.path != "/dev/null" {
-            try? FileManager.default.removeItem(at: url)
-        }
-
-        if let url = item.storiesURL,
-           url.path != "/dev/null",
-           url != item.movieURL {
-            try? FileManager.default.removeItem(at: url)
-        }
-
-        if let url = item.rawURL,
-           url.path != "/dev/null" {
-            try? FileManager.default.removeItem(at: url)
+        let barrier = librarySaveTask
+        let photosBarrier = photosSaveTask
+        var ephemeral = isShowcase
+        #if DEBUG
+        ephemeral = ephemeral || ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--verify-") })
+        if rejectGalleryDeletionForVerification { ephemeral = false }
+        #endif
+        Task {
+            let saved = ephemeral ? true : await barrier?.value == true
+            if saved {
+                // Photos may still be reading a just-captured file. Let its
+                // already-enqueued import finish before removing our copy.
+                await photosBarrier?.value
+                await GalleryThumbnails.shared.discard(files)
+                await Task.detached(priority: .utility) { for file in files { try? FileManager.default.removeItem(at: file) } }.value
+            } else {
+                captures.append(contentsOf: removed.filter { item in !captures.contains(where: { $0.id == item.id }) })
+                captures.sort { $0.date > $1.date }
+                graded.merge(grades) { current, _ in current }; clipInfo.merge(clips) { current, _ in current }; photoEdits.merge(edits) { current, _ in current }
+                showToast("Deletion couldn’t be saved. Your gallery items were kept.")
+            }
+            deletingGallery = false
         }
     }
 

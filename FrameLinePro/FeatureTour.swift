@@ -25,7 +25,7 @@ struct FeatureStory: Identifiable {
         .init(id: 8, category: "SHOOTING TOOLS", title: "Your favorites.\nYour order.", summary: "Save your camera setup, create your own styles, and arrange the styles and presets you use most. Shooting tools also include reel tracking, focus pulls and audio monitoring.", tip: "Open Manage in the Look Studio or Shooting tools. Remove or reorder styles and presets, restore deleted items, undo changes or reset the library. Your photos stay safe.", symbol: "square.stack.3d.up", scene: "Story08", marketingTitle: "Build your workflow.\nKeep your rhythm.", marketingSubtitle: "Shooting presets, reel tracking,\nfocus pulls and audio monitoring."),
         .init(id: 9, category: "NATURAL RAW", title: "Less processing.\nMore character.", summary: "Start with one sensor RAW and turn down sharpening and noise smoothing. Keep the natural texture, then choose your own look.", tip: "Fn → Shooting tools → Photo capture. Needs a compatible rear lens; grain and bright skies can be harder to control.", symbol: "camera.aperture", scene: "Story02", marketingTitle: "Keep the texture.", marketingSubtitle: "Gentle RAW development on supported lenses."),
         .init(id: 10, category: "MOTION & DEPTH", title: "Keep the moment.\nShape the background.", summary: "Live Photo saves a little movement around your picture. Depth portrait keeps distance information so you can soften the background and change the blur later.", tip: "Choose one in Photo capture. Live Photo saves the original full frame; open Develop photo to adjust depth blur. Exported portraits are still images; available lenses vary.", symbol: "livephoto", scene: "Story04", marketingTitle: "More than a still.", marketingSubtitle: "Live moments and supported depth portraits."),
-        .init(id: 11, category: "YOUR PHOTO LAB", title: "The original stays.\nThe look can change.", summary: "Your gallery stays with you after closing the app. Open Develop photo and move the sliders to see brightness, color, warmth and style changes while you slide. Crop the frame, straighten the horizon and choose a smaller copy for sharing.", tip: "Edits stay separate from your original. Share the edited version when you’re ready. Deleting a capture in the app doesn’t delete its Photos copy.", symbol: "slider.horizontal.3", scene: "Story09", marketingTitle: "Make it yours again.", marketingSubtitle: "A persistent gallery and re-editable originals."),
+        .init(id: 11, category: "YOUR PHOTO LAB", title: "The original stays.\nThe look can change.", summary: "Edit light, color and style while watching the photo. Crop, straighten and choose a smaller sharing copy. Keep HDR highlights when the original supports them.", tip: "Your original stays safe. In Gallery, use Select to remove several items, or Delete all to clear the app gallery. Copies already saved to Photos stay there.", symbol: "slider.horizontal.3", scene: "Story09", marketingTitle: "Make it yours again.", marketingSubtitle: "A persistent gallery and re-editable originals."),
         .init(id: 12, category: "VIEWFINDER FOCUS PULLS", title: "Tap two subjects.\nTell one story.", summary: "In Video, enable Focus Pull and tap your first subject for A, then your second for B. Tap either letter to move focus smoothly without leaving the viewfinder.", tip: "Choose the duration or move focus yourself with the slider. Marks remember distances; they don’t follow moving subjects. Set up before recording.", symbol: "camera.metering.center.weighted", scene: "Story07", marketingTitle: "Focus where it matters.", marketingSubtitle: "A and B, directly in your viewfinder."),
         .init(id: 13, category: "READY WHEN YOU ARE", title: "Less searching.\nMore shooting.", summary: "Pick your three viewfinder shortcuts in Shooting tools. Add FrameLine camera to your Lock Screen for a simple private photo capture, then unlock to bring those shots into your gallery.", tip: "Customize the Lock Screen’s bottom control and choose FrameLine camera. Locked capture keeps other photos private and uses its own simple camera.", symbol: "lock.open", scene: "Story06", marketingTitle: "Ready for the moment.", marketingSubtitle: "Custom shortcuts and private locked capture."),
         .init(id: 14, category: "MAKE SOMETHING YOURS", title: "Your camera.\nYour next story.", summary: "Photo, video and rangefinder. One creative space, with images processed on your device.", tip: "Start with a moment, then make it yours. Camera access starts after this tour.", symbol: "sparkles", scene: "Story10", marketingTitle: "A creative camera.\nEvery day.", marketingSubtitle: "A considered interface.\nA cinematic point of view.")
@@ -241,28 +241,29 @@ private struct FeatureSummary: View {
         ("livephoto", "Live moments"), ("camera.aperture", "Natural RAW"),
         ("crop.rotate", "Crop & straighten"), ("lock", "Lock Screen camera"),
         ("person.crop.rectangle", "Adjustable depth"), ("hand.tap", "Custom shortcuts"),
-        ("square.grid.2x2", "Manage your styles"), ("arrow.uturn.backward", "Restore & undo")
+        ("square.grid.2x2", "Manage your styles"), ("arrow.uturn.backward", "Restore & undo"),
+        ("sun.max", "HDR highlights"), ("checkmark.circle", "Select & delete"), ("photo.on.rectangle", "Fast gallery")
     ]
+    private let heights: [CGFloat] = [180, 260, 210, 190, 240, 170, 220]
     var body: some View {
             ZStack {
                 Color.black
                 HStack(alignment: .top, spacing: 18) {
                     ForEach(0..<3) { column in
                         VStack(spacing: 18) {
-                            ForEach(0..<12) { row in
-                                let tile = tiles[((row % 6) * 3 + column) % tiles.count]
-                                let heights: [CGFloat] = [180, 260, 210, 190, 240, 170]
+                            ForEach(0..<(heights.count * 2)) { row in
+                                let tile = tiles[((row % heights.count) * 3 + column) % tiles.count]
                                 VStack(spacing: 18) {
                                     Image(systemName: tile.0).font(.system(size: 43, weight: .light)).foregroundStyle(Theme.gold.opacity(0.8))
                                     Text(tile.1).font(.system(size: 22, weight: .semibold)).multilineTextAlignment(.center)
                                 }
-                                .frame(width: row.isMultiple(of: 2) ? 250 : 290, height: heights[row % 6])
-                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: row.isMultiple(of: 2) ? 42 : 28))
-                                .overlay(LinearGradient(colors: [.white.opacity(0.13), .clear, Theme.gold.opacity(0.06)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: row.isMultiple(of: 2) ? 42 : 28))
+                                .frame(width: (row % heights.count).isMultiple(of: 2) ? 250 : 290, height: heights[row % heights.count])
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: (row % heights.count).isMultiple(of: 2) ? 42 : 28))
+                                .overlay(LinearGradient(colors: [.white.opacity(0.13), .clear, Theme.gold.opacity(0.06)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: (row % heights.count).isMultiple(of: 2) ? 42 : 28))
                                 .overlay(RoundedRectangle(cornerRadius: 30).stroke(.white.opacity(0.12)))
                             }
                         }
-                        .offset(y: (scrolling ? -1358.0 : 0) - (column == 1 ? 100 : 0))
+                        .offset(y: (scrolling ? -(heights.reduce(0, +) + CGFloat(heights.count) * 18) : 0) - (column == 1 ? 100 : 0))
                     }
                 }
                 .frame(height: 852, alignment: .top)
@@ -285,7 +286,7 @@ private struct FeatureSummary: View {
         .onChange(of: reduceMotion) { _, _ in syncScrolling() }
         .onChange(of: scenePhase) { _, _ in syncScrolling() }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("FrameLine Pro. Photo, video, rangefinder, Dual Shot, looks, LUTs, manual controls and shooting tools.")
+        .accessibilityLabel("FrameLine Pro. Photo, video, rangefinder, Dual Shot, looks, LUTs, manual controls, HDR photo edits, gallery selection and shooting tools.")
     }
     private func syncScrolling() { scrolling = active && !reduceMotion && scenePhase == .active }
 }

@@ -78,7 +78,15 @@ In **Develop photo**, open **Frame & export**:
 - **Background blur:** on new depth captures, soften the background or slide to zero to keep the original sharpness.
 - **Subject separation:** choose how much of the scene stays sharp. Check hair, transparent objects and complex edges before sharing.
 
-New depth captures retain a lossless floating-point depth mask beside the original, so these adjustments survive closing the app. Older photos without a retained mask cannot gain real depth information retroactively. Exported portraits are ordinary edited images, not Apple Portrait assets with editable depth in Photos. A full source is kept privately for new depth shots even when only a framed Photos export was requested. Crop, straightening, depth and size edits do not alter the original or overwrite its existing Photos copy. Edits currently export SDR JPEG; HDR/gain-map preservation remains future work.
+New depth captures retain a lossless floating-point depth mask beside the original, so these adjustments survive closing the app. Older photos without a retained mask cannot gain real depth information retroactively. Exported portraits are ordinary edited images, not Apple Portrait assets with editable depth in Photos. A full source is kept privately for new depth shots even when only a framed Photos export was requested. Crop, straightening, depth and size edits do not alter the original or overwrite its existing Photos copy. For compatible HDR originals, **Preserve HDR highlights** saves an adaptive JPEG: compatible displays can show brighter skies and lights, while other viewers show a standard-brightness version. Turn it off for SDR-only sharing. The live editor preview is SDR; strong looks can reduce highlight brightness. RAW edits and older frame-only crops without retained HDR information cannot acquire HDR retroactively. Keep a Full/Both original when HDR matters.
+
+### Select and delete gallery items
+
+Tap **Select** in Gallery, tap the photos/videos you want, then **Delete (count)**. **Select all / Deselect all** helps with larger batches. Tap **Done** to return to browsing, or **Close** to resume the camera.
+
+**Delete all** clears the app gallery after confirmation. These actions remove the app’s originals, edits, RAW files, depth masks and video companions for the selected items. Copies already saved in Apple Photos remain there. This is separate from the style manager’s Restore Deleted feature: deleted gallery media has no in-app undo.
+
+The gallery loads small cached thumbnails with bounded background decoding. Custom-preview and scope processing pauses while you browse; the camera stays warm rather than stopping and restarting during the sheet transition. Returning flushes stale display queues and keeps the existing viewfinder. Bulk deletion updates the index once, waits for any already-enqueued Photos import, then removes files off the main thread. If the index cannot be saved, the items and files are kept.
 
 ### Manage styles and presets
 
@@ -92,7 +100,7 @@ Open **Look Studio → Manage**, or **Fn → Shooting tools → Manage styles & 
 - **Restore deleted:** brings removed built-in/custom styles and shooting presets back.
 - **Reset styles and presets:** restores the default built-ins and clears custom styles/presets after confirmation. It does not delete photos or videos; Undo can recover the previous library.
 
-The photo editor caches a decoded preview and renders slider changes directly with Metal/Core Image. It no longer waits for you to stop sliding or encodes a JPEG for each preview. Saving still develops the original at full resolution. An idle camera pauses while the gallery is open to reduce background power use; recording continues if you review while rolling.
+The photo editor caches a decoded preview and renders slider changes directly with Metal/Core Image. It no longer waits for you to stop sliding or encodes a JPEG for each preview. Saving still develops the original at full resolution. Expensive custom-preview processing pauses while the gallery is open; recording continues if you review while rolling. The capture session stays warm for a reliable return, and still stops normally when the app backgrounds.
 
 ### Your shortcuts, within reach
 

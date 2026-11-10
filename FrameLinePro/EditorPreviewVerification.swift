@@ -33,6 +33,7 @@ struct EditorPreviewVerification: View {
             try? await Task.sleep(for: .seconds(1))
             _ = await Task.detached(priority: .userInitiated) { PhotoLabVerification.run() }.value
             _ = await PhotoLabVerification.verifySave()
+            _ = await Task.detached(priority: .userInitiated) { HDRPhotoVerification.run() }.value
             EditorPreviewProbe.shared.reset()
             for index in 0..<120 {
                 edit.exposure = sin(Double(index) / 12)

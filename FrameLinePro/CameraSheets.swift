@@ -547,53 +547,98 @@ struct SettingsSheet: View {
 struct GallerySheet: View {
     @Bindable var store: CameraStore
     @Environment(\.dismiss) private var dismiss
+    @State private var selecting = false
+    @State private var selected: Set<UUID> = []
+    @State private var deletion: Set<UUID> = []
+    @State private var confirmDeletion = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if store.captures.isEmpty {
-                    ContentUnavailableView(
-                        "No frames yet",
-                        systemImage: "viewfinder",
-                        description: Text("The shutter keeps the wide frame and the crop side by side.")
-                    )
+                    ContentUnavailableView("No frames yet", systemImage: "viewfinder", description: Text("Your photos and videos will appear here."))
                 } else {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                             ForEach(store.captures) { item in
-                                NavigationLink {
-                                    CaptureDetail(
-                                        store: store,
-                                        item: item,
-                                        graded: store.graded[AnyHashable(item.id)],
-                                        info: store.clipInfo[AnyHashable(item.id)]
-                                    )
-                                } label: {
-                                    CaptureThumb(
-                                        item: item,
-                                        graded: store.graded[AnyHashable(item.id)],
-                                        info: store.clipInfo[AnyHashable(item.id)]
-                                    )
-                                }
-                                .contextMenu {
-                                    Button("Delete", role: .destructive) { store.delete(item) }
-                                }
+                                Group {
+                                    if selecting {
+                                        Button {
+                                            if !selected.insert(item.id).inserted { selected.remove(item.id) }
+                                        } label: {
+                                            thumbnail(item)
+                                                .overlay(alignment: .topTrailing) {
+                                                    Image(systemName: selected.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                                                        .font(.title2).symbolRenderingMode(.palette)
+                                                        .foregroundStyle(selected.contains(item.id) ? Theme.gold : .white, .black.opacity(0.65))
+                                                        .padding(10)
+                                                }
+                                        }.buttonStyle(.plain)
+                                        .accessibilityLabel("Select \(item.mode.title) from \(item.date.formatted())")
+                                        .accessibilityAddTraits(selected.contains(item.id) ? .isSelected : [])
+                                    } else {
+                                        NavigationLink {
+                                            CaptureDetail(store: store, item: item, graded: store.graded[AnyHashable(item.id)], info: store.clipInfo[AnyHashable(item.id)])
+                                        } label: { thumbnail(item) }
+                                        .contextMenu {
+                                            Button("Delete", role: .destructive) { requestDelete([item.id]) }
+                                        }
+                                    }
+                                }.disabled(store.deletingGallery || store.editingPhotos.contains(item.id))
                             }
-                        }
-                        .padding(16)
+                        }.padding(16)
                     }
                 }
             }
             .background(Theme.ink)
-            .navigationTitle("Gallery")
+            .navigationTitle(selecting ? "\(selected.count) selected" : "Gallery")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+                ToolbarItem(placement: .primaryAction) {
+                    Button(selecting ? "Done" : "Select") { selecting.toggle(); selected = [] }
+                        .disabled(store.captures.isEmpty || store.deletingGallery)
+                }
+                ToolbarItemGroup(placement: .bottomBar) {
+                    if store.deletingGallery { ProgressView("Deleting…") }
+                    else if selecting {
+                        Button(selected.count == store.captures.count ? "Deselect all" : "Select all") {
+                            selected = selected.count == store.captures.count ? [] : Set(store.captures.filter { !store.editingPhotos.contains($0.id) }.map(\.id))
+                        }
+                        Spacer()
+                        Button(role: .destructive) { requestDelete(selected) } label: {
+                            HStack(spacing: 6) { Image(systemName: "trash"); Text("Delete (\(selected.count))") }
+                        }.tint(.red).disabled(selected.isEmpty)
+                    } else {
+                        Spacer()
+                        Button(role: .destructive) { requestDelete(Set(store.captures.map(\.id))) } label: {
+                            HStack(spacing: 6) { Image(systemName: "trash"); Text("Delete all") }
+                        }.tint(.red).disabled(store.captures.isEmpty)
+                    }
                 }
             }
+            .confirmationDialog("Delete \(deletion.count) item\(deletion.count == 1 ? "" : "s") from the app gallery?", isPresented: $confirmDeletion, titleVisibility: .visible) {
+                Button("Delete \(deletion.count) item\(deletion.count == 1 ? "" : "s")", role: .destructive) {
+                    store.deleteCaptures(deletion)
+                    selected.subtract(deletion); deletion = []
+                    if store.captures.isEmpty { selecting = false }
+                }
+            } message: { Text("This removes the app’s originals and edits. Copies already saved to Photos are not deleted.") }
+            .onChange(of: store.captures.map(\.id)) { _, ids in selected.formIntersection(ids) }
+        }.tint(Theme.gold).preferredColorScheme(.dark)
+        #if DEBUG
+        .onAppear {
+            GalleryVerification.didPresent()
+            if ProcessInfo.processInfo.arguments.contains("--select-gallery") { selecting = true; selected = Set(store.captures.prefix(2).map(\.id)) }
         }
-        .preferredColorScheme(.dark)
+        #endif
+    }
+    private func requestDelete(_ ids: Set<UUID>) {
+        deletion = ids.subtracting(store.editingPhotos)
+        if !deletion.isEmpty { confirmDeletion = true }
+    }
+    private func thumbnail(_ item: CaptureItem) -> some View {
+        CaptureThumb(item: item, graded: store.graded[AnyHashable(item.id)], info: store.clipInfo[AnyHashable(item.id)])
     }
 }
 
@@ -647,13 +692,15 @@ struct CaptureThumb: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .task(id: graded?.cropURL ?? graded?.fullURL ?? item.cropPhotoURL ?? item.fullPhotoURL) {
             guard let url = graded?.cropURL ?? graded?.fullURL ?? item.cropPhotoURL ?? item.fullPhotoURL else { return }
-            let image = await Task.detached(priority: .utility) { (try? Data(contentsOf: url)).flatMap { PreparedStill.thumbnail($0, maxPixel: 420) } }.value
+            let image = await GalleryThumbnails.shared.image(at: url)
             guard !Task.isCancelled else { return }; diskPhoto = image
         }
         .onDisappear { diskPhoto = nil; videoFrame = nil }
         .task(id: item.movieURL) {
             guard still == nil, let url = item.movieURL else { return }
-            videoFrame = await VideoFrame.load(from: url, maxSide: 600)
+            let image = await GalleryThumbnails.shared.image(at: url, video: true)
+            guard !Task.isCancelled else { return }
+            videoFrame = image
         }
     }
 }
@@ -864,8 +911,8 @@ struct CaptureDetail: View {
             let full = fullPhotoURL; let crop = cropPhotoURL
             fullResolutionPreview = nil; cropResolutionPreview = nil
             let images = await Task.detached(priority: .userInitiated) {
-                let first = full.flatMap { try? Data(contentsOf: $0) }.flatMap { PreparedStill.thumbnail($0, maxPixel: 2560) }
-                let second = crop.flatMap { try? Data(contentsOf: $0) }.flatMap { PreparedStill.thumbnail($0, maxPixel: 2560) }
+                let first = full.flatMap { try? Data(contentsOf: $0) }.flatMap { PreparedStill.thumbnail($0, maxPixel: 2560, hdr: true) }
+                let second = crop == full ? nil : crop.flatMap { try? Data(contentsOf: $0) }.flatMap { PreparedStill.thumbnail($0, maxPixel: 2560, hdr: true) }
                 return (first, second)
             }.value
             guard !Task.isCancelled else { return }
@@ -917,6 +964,7 @@ struct CaptureDetail: View {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFit()
+                .allowedDynamicRange(.high)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }

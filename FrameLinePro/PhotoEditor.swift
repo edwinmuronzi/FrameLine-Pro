@@ -9,6 +9,7 @@ struct PhotoEditor: View {
     @State private var standardSource: CIImage?
     @State private var rawSource: CIImage?
     @State private var depthMask: CIImage?
+    @State private var sourceHasHDR = false
     @State private var saving = false
     @State private var framingExpanded = false
     @State private var loadingRAW = false
@@ -62,6 +63,10 @@ struct PhotoEditor: View {
                                     Text("Size sets the longest edge of the edited copy. Smaller copies are easier to share; your original stays full size. Photos are never enlarged.").font(.caption).foregroundStyle(.secondary)
                                 }.padding(.top, 12)
                             }
+                            if sourceHasHDR && edit.useRAW != true {
+                                Toggle("Preserve HDR highlights", isOn: Binding(get: { edit.preserveHDR ?? true }, set: { edit.preserveHDR = $0 }))
+                                Text("Keep extra brightness in skies and lights on compatible displays. Other viewers show a normal-brightness version. This preview is standard brightness; strong looks may soften the highlights.").font(.caption).foregroundStyle(.secondary)
+                            }
                             Button("Reset edits") { edit = PhotoEdit() }
                             if let error { Text(error).foregroundStyle(.red) }
                         }.padding(20)
@@ -77,7 +82,7 @@ struct PhotoEditor: View {
                         let recipe = edit
                         Task {
                             if await store.developPhoto(item, edit: recipe) { dismiss() }
-                            else { error = "The edit couldn’t be saved. Your original is safe."; saving = false }
+                            else { error = sourceHasHDR && recipe.preserveHDR != false ? "The HDR edit couldn’t be saved. Try turning off Preserve HDR highlights. Your original is safe." : "The edit couldn’t be saved. Your original is safe."; saving = false }
                         }
                     }.disabled(saving || (edit.useRAW == true ? rawSource == nil : standardSource == nil) || loadingRAW || (edit.useRAW == true && rawSource == nil))
                 }
@@ -93,15 +98,16 @@ struct PhotoEditor: View {
                 if raw && rawSource != nil || !raw && standardSource != nil { return }
                 guard let url = raw ? item.rawURL : (item.fullPhotoURL ?? item.cropPhotoURL) else { return }
                 loadingRAW = raw
-                let image = await Task.detached(priority: .userInitiated) {
-                    guard let data = try? Data(contentsOf: url) else { return Optional<CIImage>.none }
+                let prepared = await Task.detached(priority: .userInitiated) { () -> (CIImage?, Bool) in
+                    guard let data = try? Data(contentsOf: url) else { return (nil, false) }
                     let decoded = raw ? PhotoDeveloper.rawPreview(data) : data
-                    return decoded.flatMap { PreparedStill.thumbnail($0, maxPixel: 1200) }?.cgImage.map { CIImage(cgImage: $0) }
+                    let image = decoded.flatMap { PreparedStill.thumbnail($0, maxPixel: 1200) }?.cgImage.map { CIImage(cgImage: $0) }
+                    return (image, !raw && HDRPhoto.expanded(data) != nil)
                 }.value
                 guard !Task.isCancelled else { return }
-                if raw { rawSource = image } else { standardSource = image }
+                if raw { rawSource = prepared.0 } else { standardSource = prepared.0; sourceHasHDR = prepared.1 }
                 loadingRAW = false
-                if image == nil { error = "The preview couldn’t be prepared. Your original is safe." }
+                if prepared.0 == nil { error = "The preview couldn’t be prepared. Your original is safe." }
             }
         }.tint(Theme.gold).preferredColorScheme(.dark)
         .interactiveDismissDisabled(saving)

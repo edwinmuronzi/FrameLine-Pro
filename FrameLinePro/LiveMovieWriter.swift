@@ -86,6 +86,10 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
     }
 
     func appendVideo(_ sample: CMSampleBuffer) {
+        autoreleasepool { renderVideo(sample) }
+    }
+
+    private func renderVideo(_ sample: CMSampleBuffer) {
         guard !finishing, !failed, let buffer = CMSampleBufferGetImageBuffer(sample) else { return }
         guard writers.allSatisfy({ $0.canAcceptVideo }) else { return }
         #if DEBUG

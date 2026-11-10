@@ -15,6 +15,7 @@ nonisolated struct PhotoEdit: Codable, Equatable, Sendable {
     var exportLongEdge: Int? = nil
     var depthAmount: Double? = nil
     var depthSeparation: Double? = nil
+    var preserveHDR: Bool? = nil
     var hasCustomFraming: Bool { (crop != nil && crop != .original) || abs(straighten ?? 0) > 0.00001 }
 }
 
@@ -73,7 +74,12 @@ nonisolated enum PhotoDeveloper {
         guard let image = base else { return nil }
         var recipe = edit
         if edit.useRAW == true && rawData != nil { recipe.exposure = 0 }
-        return encode(exportImage(adjust(image, edit: recipe, depthMask: depthMask), longEdge: edit.exportLongEdge))
+        let output = exportImage(adjust(image, edit: recipe, depthMask: depthMask), longEdge: edit.exportLongEdge)
+        if edit.useRAW != true, edit.preserveHDR != false, let hdr = HDRPhoto.expanded(source) {
+            let highlights = exportImage(adjust(hdr, edit: recipe, depthMask: depthMask), longEdge: edit.exportLongEdge)
+            return HDRPhoto.encode(sdr: output, hdr: highlights)
+        }
+        return encode(output)
     }
     static func adjust(_ source: CIImage, edit: PhotoEdit, depthMask: CIImage? = nil) -> CIImage {
         var image = depthMask.map { PortraitRenderer.adjust(source, mask: $0, amount: edit.depthAmount ?? 0.375, separation: edit.depthSeparation ?? 0.5) } ?? source

@@ -35,13 +35,14 @@ nonisolated struct PreparedStill: @unchecked Sendable {
     var portraitRendered = false
     var depthMaskURL: URL?
 
-    static func thumbnail(_ data: Data, maxPixel: Int = 640) -> UIImage? {
+    static func thumbnail(_ data: Data, maxPixel: Int = 640, hdr: Bool = false) -> UIImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
               let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceThumbnailMaxPixelSize: maxPixel,
-                kCGImageSourceShouldCacheImmediately: true
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceDecodeRequest: hdr ? kCGImageSourceDecodeToHDR : kCGImageSourceDecodeToSDR
               ] as CFDictionary) else { return nil }
         return UIImage(cgImage: cg)
     }

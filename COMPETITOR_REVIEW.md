@@ -4,7 +4,7 @@ Reviewed 10 November 2026 against the vendors’ own published descriptions. Fea
 
 | App | Significant capability beyond the current FrameLinePro workflow | Practical next step |
 | --- | --- | --- |
-| Halide | HDR-aware looks and Photo Lab controls for crop, leveling, output resolution, tone fusion, film components and RAW development. | Crop/straighten and export sizing are now implemented. Next preserve HDR/gain-map information through editing and export. |
+| Halide | HDR-aware looks and Photo Lab controls for crop, leveling, output resolution, tone fusion, film components and RAW development. | Crop/straighten and export sizing are now implemented. Adaptive HDR JPEG export is now available for compatible HDR originals, alongside crop/straighten and export sizing. Next validate styled HDR across real scenes and expand RAW/HDR combinations. |
 | No Fusion | Its proprietary ProRAW-based HEIF+ development, advanced HSL tools, and advertised combinations of high-resolution RAW, Live Photo, Portrait, HDR and re-editing. | Adjustable blur/separation for newly retained depth maps is now implemented. Next expand compatible format combinations and depth-aware export. FrameLine’s Natural RAW is a different pipeline; its depth portrait is a rendered image, not Apple’s editable Portrait asset. |
 | Moment Pro Camera II | Dedicated slow-shutter motion blur/light trails, configurable Action Plates and widgets/shortcuts that open a particular mode or Profile. | Prioritize a straightforward motion-blur/light-trails mode and launch-to-preset controls. Three FrameLine shortcuts are useful but do not equal a fully configurable capture layout. |
 | mood.camera | Film-character calibration, highlight/gain-map-aware bloom and halation, dynamic-range shaping and film-grain modeling. | Validate a smaller set of looks across skin tones, mixed light, bright highlights and low light; improve highlight-aware film rendering. More preset names alone will not close this gap. |
@@ -21,7 +21,7 @@ FrameLine already combines video, simultaneous landscape/reel output, rangefinde
 ## Order of work
 
 1. Reliable startup, responsive editing, dependable capture/save and measured sustained thermal performance across supported phones.
-2. HDR-preserving photo export and more compatible capture combinations. Crop/straighten/output size and adjustable depth edits for new captures are now available.
+2. Broader real-scene HDR validation and more compatible capture combinations. Adaptive HDR JPEG editing of compatible originals, crop/straighten/output size and adjustable depth edits for new captures are now available.
 3. More consistent natural/film processing, with real reference photographs and controlled side-by-side tests.
 4. Slow-shutter/light-trails capture, launch-to-preset controls, then batch editing/export and portable preset files.
 

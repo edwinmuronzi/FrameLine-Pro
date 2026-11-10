@@ -434,6 +434,7 @@ nonisolated final class CaptureEngine: NSObject,
     private var lastMonitorEnqueue: CFAbsoluteTime = 0
     private var monitorSourceSize: (w: Int, h: Int) = (0, 0)
     private var monitorSettle = 0
+    private var galleryVisible = false
     private var lastLive: LiveValues?
 
     private lazy var ciContext = CIContext(options: [
@@ -527,6 +528,21 @@ nonisolated final class CaptureEngine: NSObject,
             self?.stopAfterPhotos = false
             if self?.session.isRunning == false { self?.startOnQueue() }
         }
+    }
+
+    func setGalleryVisible(_ visible: Bool) {
+        monitorLock.lock(); galleryVisible = visible; monitorLock.unlock()
+        if !visible {
+            // A covered display layer can stop consuming samples without
+            // entering .failed. Drop its stale queue before revealing it.
+            analysisQueue.async { [weak self] in
+                self?.monitorLayer.sampleBufferRenderer.flush()
+                self?.landscapeMonitorLayer.sampleBufferRenderer.flush()
+            }
+        }
+    }
+    private var previewSuppressed: Bool {
+        monitorLock.lock(); defer { monitorLock.unlock() }; return galleryVisible
     }
 
     func setAppForeground(_ foreground: Bool) {
@@ -3762,6 +3778,8 @@ nonisolated final class CaptureEngine: NSObject,
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
+        if (output === analysisOutput || output === writerVideoOutput), previewSuppressed,
+           currentLiveWriter() == nil, currentWriter() == nil, currentTimelapse() == nil { return }
         if output === analysisOutput || output === writerVideoOutput,
            let frame = CMSampleBufferGetImageBuffer(sampleBuffer) {
             let orientation: CGImagePropertyOrientation
@@ -3786,7 +3804,7 @@ nonisolated final class CaptureEngine: NSObject,
 
             // While recording, the monitor is fed from these same frames, so
             // the camera only has to deliver one 4K stream.
-            if aidsWanted,
+            if aidsWanted, !previewSuppressed,
                let frame = CMSampleBufferGetImageBuffer(sampleBuffer) {
                 let now = CFAbsoluteTimeGetCurrent()
 
@@ -3836,6 +3854,7 @@ nonisolated final class CaptureEngine: NSObject,
             if ready { renderAnalysisRecording(sampleBuffer, writer: writer) }
         }
         validateAnalysisFrame(buffer)
+        guard !previewSuppressed else { return }
 
         let now = CFAbsoluteTimeGetCurrent()
 
@@ -4305,6 +4324,17 @@ nonisolated final class CaptureEngine: NSObject,
     }
 
     #if DEBUG
+    func galleryResumeProbe() async -> (Bool, Double) {
+        await withCheckedContinuation { continuation in
+            queue.async { [weak self] in
+                guard let self else { continuation.resume(returning: (false, 999)); return }
+                self.monitorLock.lock()
+                let age = CFAbsoluteTimeGetCurrent() - self.lastMonitorEnqueue
+                self.monitorLock.unlock()
+                continuation.resume(returning: (self.session.isRunning, age))
+            }
+        }
+    }
     private struct PreviewProbeMeter {
         var count = 0
         var last: Double
@@ -4585,7 +4615,7 @@ nonisolated final class CaptureEngine: NSObject,
         let fps = duration.isFinite && duration > 0 ? 1 / duration : 30
         guard let writer = LiveMovieWriter(primary: makeURL(prefix: dual ? "Landscape" : "Graded"), secondary: dual ? makeURL(prefix: "Reel") : nil, recordingID: recordingID, fps: fps, audioSettings: audioSettings, cube: recordingCube, cubeSize: recordingCubeSize, intensity: recordingIntensity, style: recordingStyle, singleSize: size, framing: framingSnapshot(), tracking: dual ? reelTrackingState : nil, frameCrop: videoCrop, viewRatio: videoViewRatio, codec: dual ? AVVideoCodecType.hevc.rawValue : codec.rawValue, bitrate: bitrate ?? 24_000_000, usesAnalysisStream: reuseAnalysis,
             sourceOrientation: reuseAnalysis ? (captureAngle() == 0 ? .left : captureAngle() == 180 ? .right : captureAngle() == 270 ? .down : .up) : .up, onPreview: { [weak self] wide, tall in
-            guard let self, let tall, self.usesLivePreview else { return }
+            guard let self, let tall, self.usesLivePreview, !self.previewSuppressed else { return }
             self.enqueuePreview(tall, on: self.monitorLayer)
             self.enqueuePreview(wide, on: self.landscapeMonitorLayer)
             self.monitorLock.lock()

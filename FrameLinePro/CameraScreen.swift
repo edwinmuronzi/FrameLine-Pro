@@ -9,6 +9,9 @@ struct CameraScreen: View {
     @Bindable var store: CameraStore
     @Environment(\.scenePhase) private var scenePhase
     @State private var showGallery = false
+    #if DEBUG
+    @State private var galleryCheckStarted = false
+    #endif
     @State private var showFn = false
     @State private var showSettings = false
     @State private var importLUT = false
@@ -74,16 +77,18 @@ struct CameraScreen: View {
                 store.showToast("Lens changed. Tap to set A and B again.")
             }
         }
-        .onChange(of: store.requestGallery) { _, requested in if requested { showGallery = true; store.requestGallery = false } }
-        .sheet(isPresented: $showGallery) {
+        .onChange(of: store.requestGallery) { _, requested in if requested { openGallery(); store.requestGallery = false } }
+        .sheet(isPresented: $showGallery, onDismiss: {
+            store.reviewingCaptures = false
+            store.engine.setGalleryVisible(false)
+            // onDismiss belongs to the sheet itself, not a page inside its
+            // NavigationStack. Always restore the desired camera state.
+            if !store.isShowcase, scenePhase != .background { store.engine.start() }
+        }) {
             GallerySheet(store: store)
                 .onAppear {
                     store.reviewingCaptures = true
-                    if !store.isRecording { store.engine.stop(releaseRenderCaches: false) }
-                }
-                .onDisappear {
-                    store.reviewingCaptures = false
-                    if scenePhase == .active { store.engine.start() }
+                    store.engine.setGalleryVisible(true)
                 }
         }
         .sheet(isPresented: $showSettings) {
@@ -106,7 +111,49 @@ struct CameraScreen: View {
         .sensoryFeedback(.impact(weight: .medium), trigger: store.shutterTick)
         .preferredColorScheme(.dark)
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        #if DEBUG
+        .task { await verifyGalleryTransitions() }
+        #endif
     }
+
+    #if DEBUG
+    private func verifyGalleryTransitions() async {
+        guard ProcessInfo.processInfo.arguments.contains("--verify-gallery"), !galleryCheckStarted else { return }
+        galleryCheckStarted = true
+        UIApplication.shared.isIdleTimerDisabled = true
+        defer { UIApplication.shared.isIdleTimerDisabled = false }
+        store.selectMode(.photo); store.look = FilmLook.lineup[1]; store.dualShot = true
+        try? await Task.sleep(for: .seconds(2))
+        let mounts = GalleryVerification.previewMounts
+        let heartbeat = Task { @MainActor in
+            var last = ProcessInfo.processInfo.systemUptime
+            while !Task.isCancelled {
+                let now = ProcessInfo.processInfo.systemUptime
+                GalleryVerification.longestMainGap = max(GalleryVerification.longestMainGap, now - last)
+                last = now
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
+        defer { heartbeat.cancel() }
+        var passed = true
+        for iteration in 0..<12 {
+            if iteration == 6 { store.selectMode(.video); try? await Task.sleep(for: .seconds(1)) }
+            GalleryVerification.requestedAt = ProcessInfo.processInfo.systemUptime
+            openGallery()
+            try? await Task.sleep(for: .milliseconds(iteration % 2 == 0 ? 180 : 1200))
+            showGallery = false
+            try? await Task.sleep(for: .milliseconds(1100))
+            let probe = await store.engine.galleryResumeProbe()
+            let okay = probe.0 && probe.1 < 0.7 && !store.reviewingCaptures && GalleryVerification.previewMounts == mounts
+            passed = passed && okay
+            NSLog("GALLERY_TRANSITION_VERIFY iteration=%ld %@ mode=%@ running=%d frameAgeMs=%.0f mounts=%ld", iteration, okay ? "PASS" : "FAIL", store.mode.rawValue, probe.0 ? 1 : 0, probe.1 * 1000, GalleryVerification.previewMounts)
+        }
+        NSLog("GALLERY_TRANSITION_VERIFY %@ items=%ld presentations=%ld maxPresentMs=%.0f maxMainGapMs=%.0f", passed && GalleryVerification.longestMainGap < 0.25 ? "PASS" : "FAIL", store.captures.count, GalleryVerification.presentations, GalleryVerification.longestPresentation * 1000, GalleryVerification.longestMainGap * 1000)
+        await GalleryVerification.verifyDeletion()
+    }
+    #endif
+
+    private func openGallery() { showGallery = true }
 
     private var controlsStack: some View {
         VStack(spacing: 6) {
@@ -117,7 +164,7 @@ struct CameraScreen: View {
 
             ShutterDock(
                 store: store,
-                onGallery: { showGallery = true },
+                onGallery: { openGallery() },
                 onSettings: { showSettings = true },
                 onFn: { showFn = true }
             )
@@ -939,7 +986,9 @@ struct CameraPreview: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PreviewSurface {
         let view = PreviewSurface()
-
+        #if DEBUG
+        GalleryVerification.previewMounts += 1
+        #endif
         view.previewLayer.session = session
         view.previewLayer.videoGravity = .resizeAspectFill
         view.setAngle(angle)
@@ -983,10 +1032,10 @@ final class PreviewSurface: UIView {
             return
         }
 
-        let front = previewLayer.session?.inputs
-            .compactMap { $0 as? AVCaptureDeviceInput }
-            .first { $0.device.hasMediaType(.video) }?
-            .device.position == .front
+        // Connection metadata avoids querying the live session's inputs on
+        // the UI thread while its start/stop queue holds configuration locks.
+        let front = connection.inputPorts.first { $0.mediaType == .video }?
+            .sourceDevicePosition == .front
 
         if connection.automaticallyAdjustsVideoMirroring {
             connection.automaticallyAdjustsVideoMirroring = false
@@ -3497,12 +3546,11 @@ struct CaptureButtonModifier: ViewModifier {
     let store: CameraStore
 
     func body(content: Content) -> some View {
-        if store.isShowcase || store.reviewingCaptures {
-            content
-        } else if #available(iOS 18.0, *) {
+        if #available(iOS 18.0, *) {
             content.onCameraCaptureEvent { event in
-                if event.phase == .ended {
+                if event.phase == .ended, !store.isShowcase, !store.reviewingCaptures {
                     Task { @MainActor in
+                        guard !store.isShowcase, !store.reviewingCaptures else { return }
                         store.fireShutter()
                     }
                 }
