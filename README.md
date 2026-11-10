@@ -199,13 +199,15 @@ Ten coordinated **1320×2868, opaque PNG** images are in [Marketing/AppStore](Ma
 
 The set is designed for the iPhone App Store screenshot slot; confirm [Apple’s current screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/) and your actual supported devices before submission. It is a prepared marketing set, not an App Store approval or a published listing. See [the marketing notes](Marketing/README.md) for source, copy and regeneration details.
 
+See [validation results and remaining device checks](VALIDATION.md) for the tested scope and sustained thermal limits.
+
 ## Build and development
 
-Open `FrameLinePro.xcodeproj`, use scheme **MyApp**, and build the **FrameLinePro** target. Swift source is in `FrameLinePro/`. Photos and saves must be checked on real devices; simulator previews do not validate camera speed, lens transitions or thermal behavior.
+Open `FrameLinePro.xcodeproj`, use scheme **MyApp**, and build the **FrameLinePro** target. For everyday phone use, choose **Release** in Product → Scheme → Edit Scheme → Run → Build Configuration; Debug builds prioritize debugging over speed. Swift source is in `FrameLinePro/`. Photos and saves must be checked on real devices; simulator previews do not validate camera speed, lens transitions or thermal behavior.
 
 ```sh
 xcodebuild -project FrameLinePro.xcodeproj \
-  -scheme MyApp -configuration Debug \
+  -scheme MyApp -configuration Release \
   -destination 'generic/platform=iOS' build
 ```
 
