@@ -7,3 +7,7 @@ struct ContentView: View {
         CameraScreen(store: store)
     }
 }
+
+#Preview {
+    ContentView()
+}
