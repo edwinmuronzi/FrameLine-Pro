@@ -278,7 +278,9 @@ final class CameraStore {
             : String(format: "%.1f°", shutterAngle)
     }
 
-    var grid = false
+    var grid = false {
+        didSet { if !restoringSession { savePreserved() } }
+    }
 
     // Level line, from the accelerometer.
     // Zoomed loupe for checking focus, shown while a look is not hiding it.
@@ -1367,6 +1369,7 @@ final class CameraStore {
         }
         defaults.set(selectedPresetID?.uuidString, forKey: "frameline.p.selectedPreset")
         defaults.set(isFrontCamera, forKey: "frameline.p.front")
+        defaults.set(grid, forKey: "frameline.p.grid")
         defaults.set(cleanFeed, forKey: "frameline.p.cleanFeed")
         defaults.set(showManual, forKey: "frameline.p.showManual")
         defaults.set(showLUTPanel, forKey: "frameline.p.lutPanel")
@@ -1391,6 +1394,7 @@ final class CameraStore {
         defer { restoringSession = false }
 
         let defaults = UserDefaults.standard
+        grid = defaults.bool(forKey: "frameline.p.grid")
 
         if let data = defaults.data(forKey: "frameline.lastSession"),
            let preset = try? JSONDecoder().decode(ShootingPreset.self, from: data) {

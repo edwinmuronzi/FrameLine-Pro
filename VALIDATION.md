@@ -67,3 +67,14 @@ User checks: rapidly open/close Gallery in Photo and Dual Shot, open a detail th
 - Slower direct per-crop grading and color-table approximations that exceeded the fidelity limit were rejected and removed.
 
 Remaining: controlled energy profiling, longer loaded scopes/loupe runs, repeated rapid recordings and oldest-supported hardware. Full-resolution grading submission cost remains the next performance target. Sustained 30 fps, zero stutter and reduced battery drain are not established across all devices. Final installation must use normal Release without DEBUG diagnostics.
+
+## 1.2.5 — Dual Shot orientation and persistent grid (11 November 2026)
+
+- Root cause: the analysis connection already supplies portrait frames, but idle Dual Shot and the live writer applied device-angle rotation again. Both now consume that portrait source directly; selfie analysis is mirrored once. The fallback writer connection/dimensions stay portrait and retain the native aspect with even dimensions. Normal single-output photo/video orientation remains unchanged.
+- Grid now saves immediately on a user toggle and restores before either the saved-session or legacy settings path. Restoration does not write the grid back while loading. Preserve Settings remains respected.
+- Avoided allocating the unused single-preview destination buffer on every Dual Shot/anamorphic preview frame. No grading filter, source detail, output resolution, bitrate or codec was reduced.
+- Phone: four consecutive styled Dual Shot recordings at device-angle states 0, 180, 270 and 90. Each analysis connection remained 90 degrees; both previews received frames; all eight 1920×1080 / 1080×1920 files read to completion, and input/format/zoom recovery passed. These are programmatic angle checks, not a visual guarantee on every physical orientation/lifecycle transition.
+- Performance experiments rejected: intermediate caching showed no improvement, encountered a camera interruption around 133 seconds and one diagnostic file reader failed. A three-GPU-frame queue completed three minutes but delivered 3888 samples / 180.15 seconds (~21.58 fps), fair → serious thermal state. Both files read completely, but no benefit was established; the final build retains the two-frame limit and disables intermediate caching. Starting temperatures varied between runs.
+- Sustained 30 fps without quality reduction remains unresolved. No performance/energy improvement is claimed from rejected experiments. Loaded scopes/loupe, oldest supported hardware, visual physical rotation/background/foreground, grid on/off across force-quits, and controlled energy measurements remain hands-on checks.
+
+- Final two-frame/no-intermediate-cache build: twelve gallery cycles passed with four existing items, maximum presentation callback 50 ms and heartbeat gap 81 ms. Temporary deletion/rollback checks passed in 0.09 seconds. Production 1.2.5 archive succeeded and code-signature verification passed.

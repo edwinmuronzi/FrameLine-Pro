@@ -2671,8 +2671,9 @@ nonisolated final class CaptureEngine: NSObject,
             }
 
             // The aids and LUT preview follow the portrait viewfinder.
-            // Only photos and video turn with the phone.
-            let angle: CGFloat = output === analysisOutput ? 90 : captured
+            // Single-output captures turn with the phone. Dual Shot keeps one
+            // portrait source for the fixed portrait and landscape crops.
+            let angle: CGFloat = output === analysisOutput || (output === writerVideoOutput && dualPreview) ? 90 : captured
 
             if connection.isVideoRotationAngleSupported(angle) {
                 connection.videoRotationAngle = angle
@@ -4214,7 +4215,7 @@ nonisolated final class CaptureEngine: NSObject,
         let framing = framingSnapshot()
         if let original = image, dualPreview || framing.anamorphic != .off {
             var overlay = CIImage(cgImage: original)
-            if !sourceUpright { overlay = uprightImage(overlay) }
+            if !sourceUpright && !dualPreview { overlay = uprightImage(overlay) }
             overlay = overlay.transformed(by: framing.transform)
             if dualPreview {
                 let crop = ReelGeometry.crop(in: overlay.extent, ratio: 9.0 / 16, center: reelTrackingState.current)
@@ -4386,6 +4387,7 @@ nonisolated final class CaptureEngine: NSObject,
     }
 
     private var verificationMovieID: UUID?
+    private var verificationAngles: [CGFloat] = [0, 180, 270, 90]
 
     private func verifyTemporaryMovies(_ urls: [URL]) {
         Task.detached(priority: .utility) {
@@ -4426,6 +4428,11 @@ nonisolated final class CaptureEngine: NSObject,
     func verifyStyledRecording(style: StyleParams) {
         queue.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let self, let device = self.videoDevice else { return }
+            if ProcessInfo.processInfo.arguments.contains("--rotate-dual"), !self.verificationAngles.isEmpty {
+                self.deviceAngle = self.verificationAngles.removeFirst()
+                self.rotateConnections()
+                NSLog("DUAL_ORIENTATION_VERIFY angle=%.0f portraitSource=%.0f", self.deviceAngle, self.analysisOutput.connection(with: .video)?.videoRotationAngle ?? -1)
+            }
             self.recordingStyle = style
             self.recordingCube = nil
             let soak = ProcessInfo.processInfo.arguments.contains("--verify-efficiency")
@@ -4491,6 +4498,9 @@ nonisolated final class CaptureEngine: NSObject,
                             let same = self.videoDevice === device && device.activeFormat === format && abs(device.videoZoomFactor - zoom) < 0.01
                             NSLog("RESUME_VERIFY preserved input/format/zoom=%@", same ? "PASS" : "FAIL")
                             self.verifyTemporaryMovies([writer.primary] + [writer.secondary].compactMap { $0 })
+                            if ProcessInfo.processInfo.arguments.contains("--rotate-dual"), !self.verificationAngles.isEmpty {
+                                self.verifyStyledRecording(style: style)
+                            }
                         }
                     }
                 }
@@ -4609,14 +4619,16 @@ nonisolated final class CaptureEngine: NSObject,
                 // The two delivered files are 1080p. Ask the camera scaler for
                 // a matching stream rather than grading a 12 MP photo stream.
                 let dimensions = device.activeFormat.formatDescription.dimensions
-                let scale = min(1, 1920 / Double(max(dimensions.width, dimensions.height)))
-                let landscape = captureAngle() == 0 || captureAngle() == 180
-                let width = Int(landscape ? max(dimensions.width, dimensions.height) : min(dimensions.width, dimensions.height))
-                let height = Int(landscape ? min(dimensions.width, dimensions.height) : max(dimensions.width, dimensions.height))
+                let width = Int(min(dimensions.width, dimensions.height))
+                let height = Int(max(dimensions.width, dimensions.height))
+                func gcd(_ a: Int, _ b: Int) -> Int { b == 0 ? a : gcd(b, a % b) }
+                let divisor = gcd(width, height)
+                let unitW = width / divisor * 2, unitH = height / divisor * 2
+                let steps = min(divisor / 2, max(1, Int(ceil(1920.0 / Double(unitW)))))
                 writerVideoOutput.videoSettings = [
                     kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                    kCVPixelBufferWidthKey as String: max(2, Int(Double(width) * scale) / 2 * 2),
-                    kCVPixelBufferHeightKey as String: max(2, Int(Double(height) * scale) / 2 * 2)
+                    kCVPixelBufferWidthKey as String: unitW * steps,
+                    kCVPixelBufferHeightKey as String: unitH * steps
                 ]
             }
             writerVideoOutput.alwaysDiscardsLateVideoFrames = true
@@ -4650,7 +4662,7 @@ nonisolated final class CaptureEngine: NSObject,
         let duration = device.activeVideoMinFrameDuration.seconds
         let fps = duration.isFinite && duration > 0 ? 1 / duration : 30
         guard let writer = LiveMovieWriter(primary: makeURL(prefix: dual ? "Landscape" : "Graded"), secondary: dual ? makeURL(prefix: "Reel") : nil, recordingID: recordingID, completionQueue: writerQueue, resources: renderResources, fps: fps, audioSettings: audioSettings, cube: recordingCube, cubeSize: recordingCubeSize, intensity: recordingIntensity, style: recordingStyle, singleSize: size, framing: framingSnapshot(), tracking: dual ? reelTrackingState : nil, frameCrop: videoCrop, viewRatio: videoViewRatio, codec: dual ? AVVideoCodecType.hevc.rawValue : codec.rawValue, bitrate: bitrate ?? 24_000_000, usesAnalysisStream: reuseAnalysis,
-            sourceOrientation: reuseAnalysis ? (captureAngle() == 0 ? .left : captureAngle() == 180 ? .right : captureAngle() == 270 ? .down : .up) : .up, onPreview: { [weak self] wide, tall in
+            sourceOrientation: reuseAnalysis && position == .front ? .upMirrored : .up, onPreview: { [weak self] wide, tall in
             guard let self, let tall, self.usesLivePreview, !self.previewSuppressed else { return }
             self.enqueuePreview(tall, on: self.monitorLayer)
             self.enqueuePreview(wide, on: self.landscapeMonitorLayer)
@@ -5301,29 +5313,6 @@ nonisolated final class CaptureEngine: NSObject,
         let outW = max(2, (Int(Double(sourceW) * scale) / 2) * 2)
         let outH = max(2, (Int(Double(sourceH) * scale) / 2) * 2)
 
-        if monitorPool == nil || monitorPoolSize.width != outW || monitorPoolSize.height != outH {
-            let attributes: [String: Any] = [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: outW,
-                kCVPixelBufferHeightKey as String: outH,
-                kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()
-            ]
-
-            var pool: CVPixelBufferPool?
-            CVPixelBufferPoolCreate(nil, nil, attributes as CFDictionary, &pool)
-
-            monitorPool = pool
-            monitorPoolSize = (outW, outH)
-
-        }
-
-        guard let pool = monitorPool else { return }
-
-        var destination: CVPixelBuffer?
-        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &destination)
-
-        guard let destination else { return }
-
         // No colour management: the LUT expects the raw Log values.
         var image = CIImage(
             cvPixelBuffer: source,
@@ -5384,7 +5373,7 @@ nonisolated final class CaptureEngine: NSObject,
             ))
 
         if framing.saveDesqueezed, framing.anamorphic != .off {
-            let corrected = uprightImage(image).transformed(by: framing.transform)
+            let corrected = (dualPreview ? image : uprightImage(image)).transformed(by: framing.transform)
             let graded = StyleGrade.grade(corrected, cube: useCube ? cube : nil, cubeSize: dimension,
                                           intensity: intensity, style: style ?? .identity)
                 .cropped(to: corrected.extent)
@@ -5429,6 +5418,31 @@ nonisolated final class CaptureEngine: NSObject,
             monitorLock.lock(); lastMonitorEnqueue = CFAbsoluteTimeGetCurrent(); monitorLock.unlock()
             return
         }
+
+        // Dual/anamorphic branches own their destinations. Allocate this
+        // single-preview buffer only after those paths have returned.
+        if monitorPool == nil || monitorPoolSize.width != outW || monitorPoolSize.height != outH {
+            let attributes: [String: Any] = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: outW,
+                kCVPixelBufferHeightKey as String: outH,
+                kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()
+            ]
+
+            var pool: CVPixelBufferPool?
+            CVPixelBufferPoolCreate(nil, nil, attributes as CFDictionary, &pool)
+
+            monitorPool = pool
+            monitorPoolSize = (outW, outH)
+
+        }
+
+        guard let pool = monitorPool else { return }
+
+        var destination: CVPixelBuffer?
+        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &destination)
+
+        guard let destination else { return }
 
         // Wait for the picture to be fully drawn before it is shown, so a
         // half-written frame can never reach the screen.
@@ -5514,7 +5528,9 @@ nonisolated final class CaptureEngine: NSObject,
     }
 
     private func renderDualPreview(_ portrait: CIImage, resolveStyle: Bool = true) {
-        let image = uprightImage(portrait).transformed(by: framingSnapshot().transform)
+        // The analysis connection is fixed at 90 degrees, including after
+        // lifecycle and format changes. Device angle must not rotate it again.
+        let image = portrait.transformed(by: framingSnapshot().transform)
         renderDualUpright(image, resolveStyle: resolveStyle)
     }
 
