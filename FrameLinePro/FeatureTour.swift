@@ -1,0 +1,214 @@
+import SwiftUI
+import CoreImage
+import CoreImage.CIFilterBuiltins
+
+struct FeatureStory: Identifiable {
+    let id: Int
+    let category: String
+    let title: String
+    let summary: String
+    let tip: String
+    let symbol: String
+    let scene: String
+    let marketingTitle: String
+    let marketingSubtitle: String
+
+    static let all: [FeatureStory] = [
+        .init(id: 0, category: "YOUR POCKET CAMERA STUDIO", title: "A camera.\nYour point of view.", summary: "Photography, cinematic video and a rangefinder way of seeing. One considered space to make the image yours.", tip: "Three shooting modes. A signature look. Every frame intentional.", symbol: "viewfinder", scene: "Story01", marketingTitle: "Your vision.\nBeautifully framed.", marketingSubtitle: "Photo. Video. Rangefinder.\nOne creative camera."),
+        .init(id: 1, category: "PHOTOGRAPHY", title: "Photographs\nwith feeling.", summary: "Capture natural detail in HEIF or JPEG. Choose HEIF Max or RAW on supported cameras, then keep shooting while your look develops.", tip: "Tap the shutter repeatedly. Full-resolution originals stay available in the gallery.", symbol: "camera", scene: "Story02", marketingTitle: "Make the everyday\nextraordinary.", marketingSubtitle: "Natural detail. Expressive color.\nHEIF, JPEG and supported RAW."),
+        .init(id: 2, category: "VIDEO", title: "Motion,\nwith intention.", summary: "Choose the resolution, frame rate and codec your camera supports. Shape exposure, lock white balance, and monitor your sound.", tip: "Apple Log, Log 2 and ProRes appear only on compatible hardware and formats.", symbol: "video", scene: "Story03", marketingTitle: "Think in scenes.\nShoot in motion.", marketingSubtitle: "Manual video, supported Log\nand a look you can bake in."),
+        .init(id: 3, category: "DUAL SHOT", title: "One take.\nTwo stories.", summary: "Record a landscape video and a vertical reel at the same time. Move and resize the live landscape window while you frame the reel.", tip: "Two finished videos. Your style and enabled LUT bake into the pair while recording.", symbol: "rectangle.on.rectangle", scene: "Story04", marketingTitle: "Shoot once.\nTell both stories.", marketingSubtitle: "Landscape + vertical reel.\nTwo live views. Two saved videos."),
+        .init(id: 4, category: "LOOKS & LUTS", title: "Find your\nsignature.", summary: "Explore camera styles, tune Quality and Tone, or import a .cube LUT. Preview the result before you commit to the moment.", tip: "Try the looks below. LUT preview and LUT bake are independent controls.", symbol: "camera.filters", scene: "Story09", marketingTitle: "Color that\nfeels like you.", marketingSubtitle: "Live camera styles, custom looks\nand imported .cube LUTs."),
+        .init(id: 5, category: "RANGEFINDER", title: "See beyond\nthe frame.", summary: "Compose with frame lines while keeping the wider scene in sight. Choose your focal length and save the full image, the framed crop, or both.", tip: "Use the focal-length ruler to anticipate what enters your frame.", symbol: "viewfinder.rectangular", scene: "Story06", marketingTitle: "See the scene.\nFind the frame.", marketingSubtitle: "Rangefinder frame lines\nwith full-frame and crop saving."),
+        .init(id: 6, category: "MANUAL CONTROL", title: "Make every\nsetting yours.", summary: "Open M for exposure, ISO, shutter, white balance and supported manual focus. Stay automatic where you want, precise where it matters.", tip: "Slide the rulers, tap a value to type, and hold the viewfinder to lock focus and exposure.", symbol: "slider.horizontal.3", scene: "Story07", marketingTitle: "Automatic ease.\nManual precision.", marketingSubtitle: "Exposure, shutter, ISO, white balance\nand supported manual focus."),
+        .init(id: 7, category: "EXPOSURE & FOCUS AIDS", title: "See what\nyour eye can’t.", summary: "Check RGB histograms and waveform, protect highlights with zebras, find focus with peaking, or read exposure through false color.", tip: "HIST stays within reach. The eye button keeps the other aids together and out of your way.", symbol: "waveform.path", scene: "Story05", marketingTitle: "Know your light.\nTrust your focus.", marketingSubtitle: "RGB scopes, zebras, focus peaking\nand false-color exposure aids."),
+        .init(id: 8, category: "SHOOTING TOOLS", title: "Your setup.\nReady again.", summary: "Save shooting presets, track a reel subject, pull focus between two marks, frame for captions, and monitor a connected microphone.", tip: "Fn → Shooting tools. Manual focus pulls use fixed-lens mode on supported rear cameras.", symbol: "square.stack.3d.up", scene: "Story08", marketingTitle: "Build your workflow.\nKeep your rhythm.", marketingSubtitle: "Shooting presets, reel tracking,\nfocus pulls and audio monitoring."),
+        .init(id: 9, category: "MAKE SOMETHING YOURS", title: "Meet your\nnext great frame.", summary: "Your images are processed on your device. There’s no sign-in or subscription in this build. Start with a moment, then make it yours.", tip: "Camera access starts after this tour. Microphone and Photos access are requested when needed.", symbol: "sparkles", scene: "Story10", marketingTitle: "A creative camera.\nEvery day.", marketingSubtitle: "A considered interface.\nA cinematic point of view.")
+    ]
+}
+
+@MainActor
+struct CameraShowcase: View {
+    let story: FeatureStory
+    var previewImage: UIImage?
+    var previewLook: FilmLook?
+    @State private var store: CameraStore
+
+    init(story: FeatureStory, previewImage: UIImage? = nil, previewLook: FilmLook? = nil) {
+        self.story = story; self.previewImage = previewImage; self.previewLook = previewLook
+        let s = CameraStore()
+        s.isShowcase = true; s.showcaseScene = story.scene
+        s.lookOptions = LookOptions(); s.lookDials = [:]
+        s.look = previewLook ?? .standard
+        s.mode = [2, 3, 8].contains(story.id) ? .video : (story.id == 5 || story.id == 0 ? .rangefinder : .photo)
+        s.caps.hasCamera = true
+        s.selectedCodec = RecordingCodec(rawValue: "hvc1")
+        s.storageTotalBytes = 256_000_000_000
+        s.storageFreeBytes = 128_000_000_000
+        s.dualShot = story.id == 3
+        s.showManual = story.id == 6
+        if story.id == 6 { s.isoAuto = false; s.shutterAuto = false; s.iso = 200; s.shutter = 1.0 / 125 }
+        if story.id == 5 { s.focal = FocalLength(value: 50) }
+        if story.id == 4 { s.showLUTPanel = true }
+        if story.id == 7 {
+            s.showHistogram = true
+            let bins = (0..<64).map { i in Float(exp(-pow((Double(i) - 30) / 16, 2))) }
+            s.histogramData = bins
+            s.histogramChannels = [bins, Array(bins.reversed()), bins.map { $0 * 0.7 }]
+        }
+        if story.id == 8 {
+            let preset = s.currentShootingPreset(named: "Golden Hour")
+            s.shootingPresets = [preset]; s.selectedPresetID = preset.id; s.showLUTPanel = true
+        }
+        _store = State(initialValue: s)
+    }
+    var body: some View {
+        CameraScreen(store: store)
+            .onChange(of: previewImage) { _, image in store.showcaseImage = image }
+            .onChange(of: previewLook?.id) { _, _ in store.look = previewLook ?? .standard }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+struct FeatureTour: View {
+    var finish: () -> Void
+    @State private var page = 0
+    @State private var look = 0
+    @State private var lookedImage: UIImage?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var headlineSize: CGFloat = 33
+    @ScaledMetric(relativeTo: .body) private var bodySize: CGFloat = 15
+    @ScaledMetric(relativeTo: .caption) private var tipSize: CGFloat = 12
+
+    init(finish: @escaping () -> Void) {
+        self.finish = finish
+        #if DEBUG
+        if let flag = ProcessInfo.processInfo.arguments.firstIndex(of: "--tour-page"), ProcessInfo.processInfo.arguments.count > flag + 1 {
+            _page = State(initialValue: min(9, max(0, Int(ProcessInfo.processInfo.arguments[flag + 1]) ?? 0)))
+        }
+        #endif
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                Image(FeatureStory.all[page].scene).resizable().scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                    .blur(radius: 18).overlay(.black.opacity(0.62)).ignoresSafeArea()
+                VStack(spacing: 10) {
+                    HStack {
+                        Label("FRAMELINE PRO", systemImage: "viewfinder")
+                            .font(.system(size: 12, weight: .heavy, design: .monospaced)).tracking(2)
+                        Spacer()
+                        Button("Skip tour", action: finish).font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 9).glassEffect(.regular, in: Capsule())
+                    }.padding(.horizontal, 22).padding(.top, 8)
+                    TabView(selection: $page) {
+                        ForEach(FeatureStory.all) { story in
+                            storyPage(story, size: geometry.size).tag(story.id)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    HStack(spacing: 5) {
+                        ForEach(0..<FeatureStory.all.count, id: \.self) { index in
+                            Button { move(to: index) } label: {
+                                Capsule().fill(index == page ? Theme.gold : .white.opacity(0.25))
+                                    .frame(width: index == page ? 22 : 5, height: 5)
+                                    .padding(.vertical, 10)
+                            }.accessibilityLabel("Feature \(index + 1) of 10")
+                        }
+                    }
+                    Button {
+                        if page == 9 { finish() } else { move(to: page + 1) }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text(page == 9 ? "Open camera" : "Continue").font(.system(size: 17, weight: .bold))
+                            Spacer()
+                            Image(systemName: page == 9 ? "camera.fill" : "arrow.right")
+                        }
+                        .foregroundStyle(.black).padding(18)
+                        .background(Theme.gold, in: RoundedRectangle(cornerRadius: 23))
+                    }.padding(.horizontal, 22)
+                    Text("On-device creativity • Illustrated demo scenes")
+                        .font(.system(size: 10, weight: .medium)).foregroundStyle(.white.opacity(0.5))
+                        .padding(.bottom, 8)
+                }
+            }
+        }
+        .foregroundStyle(.white).preferredColorScheme(.dark)
+    }
+
+    private func move(to next: Int) {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.35)) { page = next }
+    }
+
+    private func storyPage(_ story: FeatureStory, size: CGSize) -> some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 17) {
+                let previewHeight = min(320, size.height * 0.38)
+                Group {
+                    if story.id != 4, let cached = UIImage(named: String(format: "Screen%02d", story.id + 1)) {
+                        Image(uiImage: cached).resizable().scaledToFit()
+                    } else {
+                        CameraShowcase(story: story, previewImage: story.id == 4 ? lookedImage : nil,
+                            previewLook: story.id == 4 ? FilmLook.lineup[min(look, FilmLook.lineup.count - 1)] : nil)
+                    }
+                }
+                    .frame(width: 394, height: 852)
+                    .scaleEffect(previewHeight / 852)
+                    .frame(width: 394 * previewHeight / 852, height: previewHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: 27))
+                    .overlay(RoundedRectangle(cornerRadius: 27).stroke(.white.opacity(0.28), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.45), radius: 24, y: 12)
+                    .padding(.top, 10)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Image(systemName: story.symbol)
+                        Text(story.category).tracking(1.6)
+                    }.font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.gold)
+                    Text(story.title).font(.system(size: headlineSize, weight: .bold)).tracking(-1.1)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(story.summary).font(.system(size: bodySize)).foregroundStyle(.white.opacity(0.86))
+                        .fixedSize(horizontal: false, vertical: true).lineSpacing(2)
+                    if story.id == 4 {
+                        HStack(spacing: 6) {
+                            ForEach(Array(["Natural", "Classic", "Eterna"].enumerated()), id: \.offset) { index, name in
+                                Button { look = index } label: {
+                                    Text(name).font(.system(size: 12, weight: .semibold)).padding(.horizontal, 12).padding(.vertical, 9)
+                                        .background(index == look ? Theme.gold : .white.opacity(0.12), in: Capsule())
+                                        .foregroundStyle(index == look ? .black : .white)
+                                }
+                            }
+                        }
+                        .task(id: look) { await renderLook() }
+                    }
+                    Text(story.tip).font(.system(size: tipSize)).foregroundStyle(.white.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(22).frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffect(.regular.tint(.black.opacity(0.4)), in: RoundedRectangle(cornerRadius: 29))
+                .padding(.horizontal, 20)
+            }.padding(.bottom, 8)
+        }
+    }
+
+    @MainActor private func renderLook() async {
+        let chosen = look
+        guard let source = UIImage(named: "Story09")?.cgImage else { return }
+        let style = chosen == 0 ? StyleParams.identity : StyleParams(look: FilmLook.lineup[min(chosen, FilmLook.lineup.count - 1)], options: LookOptions(), dials: LookRecipe.defaultDials(for: FilmLook.lineup[min(chosen, FilmLook.lineup.count - 1)].id))
+        let result = await Task.detached(priority: .userInitiated) {
+            let input = CIImage(cgImage: source)
+            let context = TourLookRenderer.context
+            let graded = StyleGrade.grade(input, cube: nil, cubeSize: 0, intensity: 1, style: style)
+            return context.createCGImage(graded, from: input.extent).map { UIImage(cgImage: $0) }
+        }.value
+        guard !Task.isCancelled, chosen == look else { return }
+        lookedImage = result
+    }
+}
+
+private nonisolated enum TourLookRenderer {
+    static let context = CIContext(options: [.cacheIntermediates: false])
+}

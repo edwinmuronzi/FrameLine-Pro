@@ -45,10 +45,15 @@ struct CameraScreen: View {
         .animation(.snappy(duration: 0.28), value: store.showManual)
         .animation(.snappy(duration: 0.2), value: store.toast)
         .onAppear {
-            store.activate()
+            if !store.isShowcase {
+                store.activate()
+                store.resumeForegroundWork()
+                store.engine.start()
+            }
         }
         .modifier(CaptureButtonModifier(store: store))
         .onChange(of: scenePhase) { _, phase in
+            guard !store.isShowcase else { return }
             if phase != .active {
                 store.savePreserved()
             }
@@ -127,7 +132,10 @@ struct CameraScreen: View {
         GeometryReader { geo in
             ZStack {
                 Group {
-                    if store.caps.hasCamera {
+                    if let scene = store.showcaseScene {
+                        Image(uiImage: store.showcaseImage ?? UIImage(named: scene) ?? UIImage())
+                            .resizable().scaledToFill()
+                    } else if store.caps.hasCamera {
                         CameraPreview(session: store.engine.session, angle: 90)
                     } else {
                         DemoHarborScene()
@@ -138,9 +146,9 @@ struct CameraScreen: View {
                     width: geo.size.width,
                     height: geo.size.height
                 )
-                .opacity(store.monitorShown ? 0 : 1)
+                .opacity(store.monitorShown && !store.isShowcase ? 0 : 1)
 
-                if store.monitorShown, store.caps.hasCamera {
+                if store.monitorShown, store.caps.hasCamera, !store.isShowcase {
                     LUTMonitorView(layer: store.engine.monitorLayer, gravity: store.mode == .video && (store.dualShot || store.framingOptions.anamorphic != .off) ? .resizeAspect : .resizeAspectFill)
                         .frame(
                             width: geo.size.width,
@@ -798,7 +806,10 @@ private struct DualShotLiveWindow: View {
 
             ZStack(alignment: .bottomTrailing) {
                 ZStack {
-                    if store.caps.hasCamera {
+                    if let scene = store.showcaseScene {
+                        Image(uiImage: store.showcaseImage ?? UIImage(named: scene) ?? UIImage()).resizable().scaledToFill()
+                            .frame(width: w, height: h)
+                    } else if store.caps.hasCamera {
                         LUTMonitorView(layer: store.engine.landscapeMonitorLayer)
                             .frame(width: w, height: h)
                     } else {
@@ -1377,9 +1388,8 @@ struct ZoomRuler: View {
                 .contentTransition(.numericText(value: current))
                 .animation(.linear(duration: 0.1), value: current)
 
-            // TimelineView redraws at the display's native frame rate so
-            // the ruler scrolls without waiting for store updates.
-            TimelineView(.animation) { _ in
+            // Store/gesture updates drive the ruler; a static ruler needs no
+            // display-rate timer between interactions.
             Canvas { context, size in
                 let middle = size.width / 2
                 let baseline = size.height
@@ -1453,7 +1463,6 @@ struct ZoomRuler: View {
                     endPoint: .trailing
                 )
             )
-            } // TimelineView
         }
         .shadow(color: .black.opacity(0.5), radius: 2)
         .contentShape(Rectangle())
@@ -1519,8 +1528,8 @@ struct StatusPill: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 3)) { _ in
             let device = UIDevice.current
-            let level = device.batteryLevel
-            let charging = device.batteryState == .charging || device.batteryState == .full
+            let level: Float = store.isShowcase ? 1 : device.batteryLevel
+            let charging = !store.isShowcase && (device.batteryState == .charging || device.batteryState == .full)
 
             VStack(alignment: .trailing, spacing: 1) {
                 HStack(spacing: 3) {
@@ -3131,7 +3140,7 @@ struct ShutterDock: View {
                         shutter
                     }
                     .buttonStyle(UprightStyle())
-                    .disabled(store.isBusy)
+                    .disabled(store.isBusy && store.mode != .video)
 
                     Spacer(minLength: 0)
 
@@ -3263,23 +3272,25 @@ struct ShutterDock: View {
 
     private var thumb: some View {
         ZStack {
-            if let image = store.captures.first?.cropImage
-                ?? store.captures.first?.fullImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
+            if let capture = store.captures.first,
+               let image = store.graded[AnyHashable(capture.id)]?.crop ?? store.graded[AnyHashable(capture.id)]?.full ?? capture.cropImage ?? capture.fullImage {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else if let scene = store.showcaseScene {
+                Image(scene).resizable().scaledToFill()
             } else {
-                DemoHarborScene()
+                Image(systemName: "photo.on.rectangle").font(.system(size: 18)).foregroundStyle(.white.opacity(0.8))
             }
         }
         .frame(width: 36, height: 36)
-        .clipShape(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(.white.opacity(0.7), lineWidth: 1)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.7), lineWidth: 1))
+        .overlay(alignment: .topTrailing) {
+            if store.pendingPhotoCount > 0 {
+                Text("\(store.pendingPhotoCount)").font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.black).padding(3).background(Theme.gold, in: Circle()).offset(x: 5, y: -5)
+            }
         }
+        .accessibilityLabel(store.pendingPhotoCount > 0 ? "Gallery, \(store.pendingPhotoCount) photos processing" : "Gallery")
     }
 
     @ViewBuilder
@@ -3436,7 +3447,9 @@ struct CaptureButtonModifier: ViewModifier {
     let store: CameraStore
 
     func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
+        if store.isShowcase {
+            content
+        } else if #available(iOS 18.0, *) {
             content.onCameraCaptureEvent { event in
                 if event.phase == .ended {
                     Task { @MainActor in

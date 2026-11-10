@@ -31,7 +31,7 @@ struct FnSheet: View {
 
                         Text(detent == Self.compact
                             ? "Tap a style and watch the viewfinder. Pull up for look details, LUT and video options."
-                            : "Styles show live in the viewfinder. When one is on, photos are saved untouched and again with the style baked in.")
+                            : "Styles show live in the viewfinder. With a style on, the graded photo saves to Photos; your original remains in the session gallery.")
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.55))
                     }
@@ -381,6 +381,10 @@ struct SettingsSheet: View {
                     }
                 }
 
+                Section("Discover FrameLinePro") {
+                    Button("Replay the feature tour", systemImage: "sparkles.rectangle.stack") { store.showWelcome = true }
+                }
+
                 Section("Shooting") {
                     Toggle("Preserve settings", isOn: $store.preserveSettings)
                     Toggle("Lock white balance while recording", isOn: $store.lockWBOnRecord)
@@ -699,6 +703,12 @@ struct CaptureDetail: View {
         graded != nil && version == .graded
     }
 
+    @State private var fullResolutionPreview: UIImage?
+    @State private var cropResolutionPreview: UIImage?
+    private var fullPhotoURL: URL? { showingGraded ? (graded?.fullURL ?? item.fullPhotoURL) : item.fullPhotoURL }
+    private var cropPhotoURL: URL? { showingGraded ? (graded?.cropURL ?? item.cropPhotoURL) : item.cropPhotoURL }
+    private var sharePhotoURL: URL? { cropPhotoURL ?? fullPhotoURL }
+
     // The picture the share button sends: the version on screen.
     private var shareImage: UIImage? {
         if showingGraded {
@@ -757,12 +767,16 @@ struct CaptureDetail: View {
                     .pickerStyle(.segmented)
                 }
 
-                if let full = showingGraded ? (graded?.full ?? item.fullImage) : item.fullImage {
+                if let full = fullResolutionPreview ?? (showingGraded ? (graded?.full ?? item.fullImage) : item.fullImage) {
                     labeled("Full frame", image: full)
                 }
 
-                if let crop = showingGraded ? (graded?.crop ?? item.cropImage) : item.cropImage {
+                if let crop = cropResolutionPreview ?? (showingGraded ? (graded?.crop ?? item.cropImage) : item.cropImage) {
                     labeled("Frame lines", image: crop)
+                }
+
+                if let raw = item.rawURL {
+                    ShareLink(item: raw) { Label("Share RAW", systemImage: "square.and.arrow.up") }
                 }
 
                 if let movie = item.movieURL {
@@ -805,7 +819,9 @@ struct CaptureDetail: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if let image = shareImage {
+                if let url = sharePhotoURL {
+                    ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
+                } else if let image = shareImage {
                     ShareLink(
                         item: Image(uiImage: image),
                         preview: SharePreview("Photo", image: Image(uiImage: image))
@@ -820,6 +836,17 @@ struct CaptureDetail: View {
                     Image(systemName: "trash")
                 }
             }
+        }
+        .task(id: showingGraded) {
+            let full = fullPhotoURL; let crop = cropPhotoURL
+            fullResolutionPreview = nil; cropResolutionPreview = nil
+            let images = await Task.detached(priority: .userInitiated) {
+                let first = full.flatMap { try? Data(contentsOf: $0) }.flatMap { PreparedStill.thumbnail($0, maxPixel: 2560) }
+                let second = crop.flatMap { try? Data(contentsOf: $0) }.flatMap { PreparedStill.thumbnail($0, maxPixel: 2560) }
+                return (first, second)
+            }.value
+            guard !Task.isCancelled else { return }
+            fullResolutionPreview = images.0; cropResolutionPreview = images.1
         }
         .confirmationDialog(
             "Delete this capture from the gallery?",

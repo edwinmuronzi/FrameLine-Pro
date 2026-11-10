@@ -241,7 +241,7 @@ private nonisolated struct FormatProbe {
 enum EngineEvent: Sendable {
     case caps(DeviceCaps)
     case recording(Bool)
-    case photo(processed: Data?, raw: Data?)
+    case photo(id: UUID, processed: Data?, raw: Data?)
     case movie(primary: URL, secondary: URL?, kind: DualKind, recordingID: UUID? = nil, baked: Bool = false)
     case message(String)
     case exposureSample(iso: Float, shutter: Double)
@@ -298,9 +298,8 @@ nonisolated final class CaptureEngine: NSObject,
 
     private var videoDevice: AVCaptureDevice?
     private var position: AVCaptureDevice.Position = .back
-    private var processedData: Data?
-    private var rawData: Data?
-    private var pendingSlots = 0
+    private var photoDelegates: [Int64: PhotoShotDelegate] = [:]
+    private var stopAfterPhotos = false
     private var dualActive = false
     private var primaryURL: URL?
     private var secondaryURL: URL?
@@ -520,6 +519,7 @@ nonisolated final class CaptureEngine: NSObject,
     func start() {
         queue.async { [weak self] in
             self?.sessionWanted = true
+            self?.stopAfterPhotos = false
             self?.startOnQueue()
         }
     }
@@ -532,6 +532,7 @@ nonisolated final class CaptureEngine: NSObject,
         queue.async { [weak self] in
             guard let self else { return }
             self.sessionWanted = false
+            if !self.photoDelegates.isEmpty { self.stopAfterPhotos = true; return }
             self.liveTimer?.cancel(); self.liveTimer = nil
             if self.session.isRunning { self.session.stopRunning() }
             self.audioQueue.async { [weak self] in self?.cameraAudio.stop() }
@@ -1208,7 +1209,7 @@ nonisolated final class CaptureEngine: NSObject,
 
     // MARK: - Photo Capture
 
-    func capturePhoto(raw: Bool, flash: FlashChoice, format: PhotoFormat) {
+    func capturePhoto(raw: Bool, flash: FlashChoice, format: PhotoFormat, id: UUID = UUID()) {
         queue.async { [weak self] in
             guard let self else { return }
 
@@ -1217,12 +1218,6 @@ nonisolated final class CaptureEngine: NSObject,
                 flash: flash,
                 format: format
             )
-
-            self.processedData = nil
-            self.rawData = nil
-
-            self.pendingSlots =
-                settings.rawPhotoPixelFormatType != 0 ? 2 : 1
 
             settings.photoQualityPrioritization = .balanced
 
@@ -1233,10 +1228,20 @@ nonisolated final class CaptureEngine: NSObject,
                 connection.videoRotationAngle = angle
             }
 
-            self.photoOutput.capturePhoto(
-                with: settings,
-                delegate: self
-            )
+            let uniqueID = settings.uniqueID
+            let delegate = PhotoShotDelegate { [weak self] processed, raw in
+                self?.queue.async { [weak self] in
+                    guard let self else { return }
+                    self.photoDelegates[uniqueID] = nil
+                    self.emit(.photo(id: id, processed: processed, raw: raw))
+                    if self.photoDelegates.isEmpty, self.stopAfterPhotos, !self.sessionWanted {
+                        self.stopAfterPhotos = false
+                        self.stop()
+                    }
+                }
+            }
+            self.photoDelegates[uniqueID] = delegate
+            self.photoOutput.capturePhoto(with: settings, delegate: delegate)
         }
     }
 
@@ -1735,39 +1740,6 @@ nonisolated final class CaptureEngine: NSObject,
         }
     }
 
-    // MARK: - Photo Delegate
-
-    func photoOutput(
-        _ output: AVCapturePhotoOutput,
-        didFinishProcessingPhoto photo: AVCapturePhoto,
-        error: Error?
-    ) {
-        let data = error == nil ? photo.fileDataRepresentation() : nil
-        let isRaw = photo.isRawPhoto
-
-        queue.async { [weak self] in
-            guard let self else { return }
-
-            if isRaw {
-                self.rawData = data
-            } else {
-                self.processedData = data
-            }
-
-            self.pendingSlots -= 1
-
-            if self.pendingSlots <= 0 {
-                let processed = self.processedData
-                let raw = self.rawData
-
-                self.processedData = nil
-                self.rawData = nil
-
-                self.emit(.photo(processed: processed, raw: raw))
-            }
-        }
-    }
-
     // MARK: - Movie Delegate
 
     func fileOutput(
@@ -1910,6 +1882,9 @@ nonisolated final class CaptureEngine: NSObject,
 
             if photoOutput.isResponsiveCaptureSupported {
                 photoOutput.isResponsiveCaptureEnabled = true
+            }
+            if photoOutput.isFastCapturePrioritizationSupported {
+                photoOutput.isFastCapturePrioritizationEnabled = true
             }
         }
 
@@ -5852,13 +5827,16 @@ nonisolated enum LUTMonitor {
 
     // Converts a LUT's table into the RGBA float data CoreImage expects.
     static func cubeData(from value: Any, size: Int) -> Data? {
-        guard size > 1 else { return nil }
+        guard size > 1, size <= 65 else { return nil }
 
         let cells = size * size * size
         var floats: [Float]
 
         if let data = value as? Data {
             let bytes = data.count
+            // Imported and built-in cubes already use RGBA Float32. Share
+            // their immutable storage instead of copying megabytes per tap.
+            if bytes == cells * 16 { return data }
 
             if bytes == cells * 16 || bytes == cells * 12 {
                 floats = data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }

@@ -18,3 +18,11 @@ DEBUG-only launch arguments `--verify-live-zoom`, `--verify-advanced-preview`, `
 `--verify-efficiency` records a private 60-second styled Dual Shot pair and logs thermal state, both preview counts, final frame counts and dimensions. `--verify-interruption` injects capture-session interruption notifications and checks finalization/resume. Diagnostic movie events are intercepted so they do not save to Photos. Keep the phone unlocked for sustained capture checks. Real call/lock interruption scenarios still need device testing.
 
 Efficiency changes preserve recording resolution, frame rate, bitrate and grading. Motion/storage polling and capture metering stop in the background, unused audio monitoring is lazy, and preview/writer format descriptions are reused. Report thermal state and measured battery/power separately; thermal status alone does not measure energy consumption.
+
+## Photo pipeline and onboarding
+
+`--verify-photo-pipeline` exercises reordered callbacks, isolated grading contexts, both saved framings, thumbnail bounds and chronological ordering. `--verify-photo-burst` submits five HEIF shutter requests 140 ms apart, then repeats with a style; it checks completion and main-actor progress and cleans its local files without writing test images to Photos. Device verification passed all ten captures; completion including processing was 4.42 seconds plain and 2.75 seconds styled. This is a bounded regression check, not a guarantee of identical throughput on every device or format.
+
+Test first-launch onboarding and Settings → feature tour, including interactive look comparisons, large text and Reduce Motion. Preview stores must never activate the camera or overwrite preserved shooting preferences. Use `--show-tour --tour-page N` for Debug visual checks (zero-based page).
+
+Run `scripts/export-marketing.sh` to refresh ten native interface images and marketing compositions, then rebuild to include the compressed onboarding previews. Review the output before release. Minimum deployment is iOS 26; RAW, codecs and lens availability remain hardware-dependent. Simulator compilation does not replace testing on the oldest supported hardware.

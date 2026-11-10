@@ -662,11 +662,12 @@ nonisolated enum DateStamp {
 nonisolated enum StillComposer {
 
     private static let managed = CIContext(
-        options: [.cacheIntermediates: false]
+        options: [.cacheIntermediates: false, .priorityRequestLow: true]
     )
 
     private static let raw = CIContext(options: [
         .cacheIntermediates: false,
+        .priorityRequestLow: true,
         .workingColorSpace: NSNull(),
         .outputColorSpace: NSNull()
     ])
@@ -749,7 +750,7 @@ nonisolated enum StillComposer {
                 style: request.style
             )
 
-            let wantsFull = target == "FULL" || coversFrame
+            let wantsFull = target != "FRAME" || coversFrame
             let wantsCrop = target != "FULL"
 
             if wantsFull {
@@ -788,6 +789,7 @@ nonisolated enum StillComposer {
             return Result(
                 fullJPEG: imageData,
                 cropJPEG: graded ? nil : originalCrop,
+                gradedFull: gradedFull,
                 gradedCrop: gradedCrop
             )
         }

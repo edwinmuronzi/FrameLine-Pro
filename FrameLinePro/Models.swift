@@ -389,8 +389,8 @@ nonisolated struct FrameMath {
 }
 
 struct CaptureItem: Identifiable {
-    let id = UUID()
-    let date = Date()
+    var id = UUID()
+    var date = Date()
     var fullImage: UIImage?
     var cropImage: UIImage?
     var movieURL: URL?
@@ -399,4 +399,6 @@ struct CaptureItem: Identifiable {
     var detail: String
     var simulated: Bool
     var mode: CaptureMode
+    var fullPhotoURL: URL? = nil
+    var cropPhotoURL: URL? = nil
 }

@@ -8,6 +8,10 @@ import UIKit
 @Observable
 final class CameraStore {
     let engine = CaptureEngine()
+    var isShowcase = false
+    var showcaseScene: String?
+    var showcaseImage: UIImage?
+    var showWelcome = false
 
     @ObservationIgnored private var finalizationActivity: CaptureSaveActivity?
     @ObservationIgnored private var preserveTask: Task<Void, Never>?
@@ -26,7 +30,7 @@ final class CameraStore {
     var selectedPresetID: UUID?
     var shootingPresets = ShootingPreset.load() {
         didSet {
-            ShootingPreset.save(shootingPresets)
+            if !isShowcase { ShootingPreset.save(shootingPresets) }
             if let selectedPresetID, !shootingPresets.contains(where: { $0.id == selectedPresetID }) { self.selectedPresetID = nil }
         }
     }
@@ -67,7 +71,7 @@ final class CameraStore {
         }
     }
     var focal = FocalLength.all[0]
-    var format: PhotoFormat = .heifMax
+    var format: PhotoFormat = .heif
     var saveTarget: SaveTarget = .both
     var aspect: FrameAspect = .sensor
     var exposure: Float = -0.7
@@ -361,7 +365,7 @@ final class CameraStore {
     // Quality and Tone are kept for each look.
     var lookDials: [String: LookDials] = LookDials.loadAll() {
         didSet {
-            LookDials.saveAll(lookDials)
+            if !isShowcase { LookDials.saveAll(lookDials) }
             updateStyle()
         }
     }
@@ -430,7 +434,7 @@ final class CameraStore {
     // Which parts of the look are on, and how strong it is.
     var lookOptions = LookOptions.load() {
         didSet {
-            LookOptions.save(lookOptions)
+            if !isShowcase { LookOptions.save(lookOptions) }
             updateStyle()
         }
     }
@@ -495,6 +499,19 @@ final class CameraStore {
     var captures: [CaptureItem] = []
     var isRecording = false
     var isBusy = false
+    private struct StillContext {
+        let date = Date()
+        let request: StillComposer.Request
+        let detail: String
+        let saves: Bool
+        let mode: CaptureMode
+    }
+    @ObservationIgnored private var stillContexts: [UUID: StillContext] = [:]
+    @ObservationIgnored private var compositionTail: Task<Void, Never>?
+    @ObservationIgnored private var compositionTailID: UUID?
+    var pendingPhotoCount = 0
+
+    private var photoCapacity: Int { rawEnabled || format == .heifMax ? 2 : 5 }
     var recordingStarted: Date?
 
     // Timecode runs on from clip to clip. It restarts only when reset.
@@ -797,6 +814,8 @@ final class CameraStore {
 
         refreshRecordingCodecs()
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--verify-photo-pipeline") { verifyPhotoPipeline() }
+        if ProcessInfo.processInfo.arguments.contains("--verify-photo-burst") { verifyPhotoBurst() }
         if (ProcessInfo.processInfo.arguments.contains("--verify-styled-recording") || ProcessInfo.processInfo.arguments.contains("--verify-efficiency") || ProcessInfo.processInfo.arguments.contains("--verify-interruption")) {
             engine.verifyStyledRecording(style: styleParams)
             if ProcessInfo.processInfo.arguments.contains("--verify-efficiency") {
@@ -1291,7 +1310,7 @@ final class CameraStore {
     }
 
     func savePreserved() {
-        guard preserveSettings, !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--verify-") }) else { return }
+        guard bound, !isShowcase, preserveSettings, !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--verify-") }) else { return }
 
         let defaults = UserDefaults.standard
         if let data = try? JSONEncoder().encode(currentShootingPreset(named: "Last session")) {
@@ -1447,6 +1466,7 @@ final class CameraStore {
     }
 
     func fireShutter() {
+        guard mode == .video || !isBusy else { return }
         shutterTick += 1
 
         // A running photo timelapse stops on the next press. A video
@@ -1585,16 +1605,23 @@ final class CameraStore {
         }
 
         if caps.hasCamera {
-            isBusy = true
-
-            engine.capturePhoto(
-                raw: rawEnabled,
-                flash: flash,
-                format: format
-            )
+            _ = submitPhoto()
         } else {
+            #if targetEnvironment(simulator)
             captureSimulated()
+            #else
+            showToast("Allow Camera access in Settings to take a photo.")
+            #endif
         }
+    }
+
+    @discardableResult private func submitPhoto() -> UUID {
+        let id = UUID()
+        stillContexts[id] = makeStillContext()
+        pendingPhotoCount = stillContexts.count
+        isBusy = pendingPhotoCount >= photoCapacity
+        engine.capturePhoto(raw: rawEnabled, flash: flash, format: format, id: id)
+        return id
     }
 
     func toggleRecording() {
@@ -1744,7 +1771,7 @@ final class CameraStore {
     func suspendBackgroundWork() {
         savePreserved()
         engine.setAppForeground(false)
-        if isRecording {
+        if isRecording || pendingPhotoCount > 0 {
             let activity = CaptureSaveActivity()
             activity.begin()
             finalizationActivity = activity
@@ -2472,6 +2499,7 @@ final class CameraStore {
     }
 
     private func aidsChanged() {
+        guard !isShowcase else { return }
         let defaults = UserDefaults.standard
 
         defaults.set(showHistogram, forKey: "frameline.aid.hist")
@@ -2612,7 +2640,7 @@ final class CameraStore {
         showToast("Saved \(name).")
     }
 
-    private func currentShootingPreset(named name: String) -> ShootingPreset {
+    func currentShootingPreset(named name: String) -> ShootingPreset {
         ShootingPreset(name: name, mode: mode.rawValue, format: format.rawValue, saveTarget: saveTarget.rawValue, aspect: aspect.rawValue,
             focal: focal.value, exposure: exposure, raw: rawEnabled, flash: flash.rawValue,
             log: logProfile.rawValue, dual: dualShot, width: recSettings.resolution?.width, height: recSettings.resolution?.height,
@@ -2729,6 +2757,8 @@ final class CameraStore {
     }
 
     func delete(_ item: CaptureItem) {
+        let stillFiles = [item.fullPhotoURL, item.cropPhotoURL, graded[AnyHashable(item.id)]?.fullURL, graded[AnyHashable(item.id)]?.cropURL].compactMap { $0 }
+        for file in stillFiles { try? FileManager.default.removeItem(at: file) }
         captures.removeAll { $0.id == item.id }
         if let url = graded[AnyHashable(item.id)]?.movie {
             try? FileManager.default.removeItem(at: url)
@@ -2820,19 +2850,18 @@ final class CameraStore {
                 )
             }
 
-        case .photo(let processed, let raw):
-            isBusy = false
-
+        case .photo(let id, let processed, let raw):
             guard let processed else {
-                showToast("The photo did not come through.")
+                stillContexts[id] = nil
+                pendingPhotoCount = stillContexts.count
+                isBusy = pendingPhotoCount >= photoCapacity
+                if pendingPhotoCount == 0 { finalizationActivity?.end(); finalizationActivity = nil }
+                showToast("The photo did not come through. Try again.")
                 return
             }
-
-            storeStill(
-                fullData: processed,
-                raw: raw,
-                simulated: false
-            )
+            if stillContexts[id] == nil { stillContexts[id] = makeStillContext() }
+            if bracketTask != nil { isBusy = false }
+            storeStill(fullData: processed, raw: raw, simulated: false, id: id)
 
         case .movie(let primary, let secondary, let kind, let recordingID, let baked):
             defer { finalizationActivity?.end(); finalizationActivity = nil }
@@ -3010,86 +3039,135 @@ final class CameraStore {
         )
     }
 
-    private func storeStill(
-        fullData: Data,
-        raw: Data?,
-        simulated: Bool
-    ) {
-        let scale: CGFloat = mode == .rangefinder
-            ? CGFloat(min(1, 24 * lensZoom / Double(focal.value)))
-            : 1
+    private func makeStillContext() -> StillContext {
+        let scale: CGFloat = mode == .rangefinder ? CGFloat(min(1, 24 * lensZoom / Double(focal.value))) : 1
+        let lut = bakeLUT ? selectedLUT : nil
+        let cube = lut.flatMap { LUTMonitor.cubeData(from: $0.data, size: Int($0.size)) }
+        return StillContext(request: StillComposer.Request(focalScale: scale, aspectRatio: aspect.ratio,
+            saveTarget: saveTarget.rawValue, style: styleParams, cube: cube, cubeSize: cube == nil ? 0 : (lut?.size ?? 0),
+            lutIntensity: lutIntensity), detail: caption, saves: saveToPhotos, mode: mode)
+    }
 
-        // LUT bakes when the toggle is on. A style always bakes.
-        var cube: Data?
-        var cubeSize = 0
+    private func storeStill(fullData: Data, raw: Data?, simulated: Bool, id: UUID = UUID()) {
+        let context = stillContexts[id] ?? makeStillContext()
+        stillContexts[id] = context
+        pendingPhotoCount = stillContexts.count
+        let previous = compositionTail
+        compositionTailID = id
+        compositionTail = Task { @MainActor [weak self] in
+            await previous?.value
+            let prepared = await Task.detached(priority: .userInitiated) {
+                autoreleasepool {
+                    let result = StillComposer.compose(imageData: fullData, request: context.request)
+                    return PreparedStill.make(result: result, raw: raw, id: id)
+                }
+            }.value
+            guard let self else { return }
+            var item = CaptureItem(fullImage: prepared.full, cropImage: prepared.crop, movieURL: nil,
+                storiesURL: nil, rawURL: prepared.rawURL, detail: context.detail, simulated: simulated, mode: context.mode)
+            item.id = id; item.date = context.date
+            item.fullPhotoURL = prepared.fullURL; item.cropPhotoURL = prepared.cropURL
+            if prepared.gradedFull != nil || prepared.gradedCrop != nil {
+                var value = GradedStills(full: prepared.gradedFull, crop: prepared.gradedCrop)
+                value.fullURL = prepared.gradedFullURL; value.cropURL = prepared.gradedCropURL
+                graded[AnyHashable(item.id)] = value
+            }
+            let position = captures.firstIndex(where: { $0.date < item.date }) ?? captures.endIndex
+            captures.insert(item, at: position)
+            if prepared.photosURLs.isEmpty { showToast("Could not store the full-resolution photo. Check free space.") }
+            stillContexts[id] = nil
+            pendingPhotoCount = stillContexts.count
+            isBusy = pendingPhotoCount >= photoCapacity
+            if compositionTailID == id { compositionTail = nil; compositionTailID = nil }
+            if context.saves { saveStillFiles(prepared.photosURLs, raw: prepared.rawURL) }
+            if pendingPhotoCount == 0 { finalizationActivity?.end(); finalizationActivity = nil }
+        }
+    }
 
-        if bakeLUT, let lut = selectedLUT {
-            cubeSize = Int(lut.size)
-            cube = LUTMonitor.cubeData(from: lut.data, size: cubeSize)
+    #if DEBUG
+    func verifyPhotoBurst() {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard let self, caps.hasCamera else { NSLog("PHOTO_BURST_VERIFY FAIL no camera"); return }
+            selectMode(.photo)
+            rawEnabled = false; format = .heif; flash = .off; saveToPhotos = false
+            engine.setTorch(enabled: false)
+            for styled in [false, true] {
+                look = styled ? (FilmLook.lineup.first(where: { $0.id != "standard" }) ?? .standard) : .standard
+                var ids: [UUID] = []
+                let begin = ProcessInfo.processInfo.systemUptime
+                for _ in 0..<5 {
+                    ids.append(submitPhoto())
+                    try? await Task.sleep(for: .milliseconds(140))
+                }
+                var ticks = 0
+                while ids.contains(where: { stillContexts[$0] != nil }), ProcessInfo.processInfo.systemUptime - begin < 25 {
+                    ticks += 1
+                    try? await Task.sleep(for: .milliseconds(20))
+                }
+                let completed = captures.filter { ids.contains($0.id) }
+                let success = completed.count == 5 && !ids.contains(where: { stillContexts[$0] != nil })
+                NSLog("PHOTO_BURST_VERIFY %@ styled=%d captured=%ld elapsed=%.2f mainActorTicks=%ld", success ? "PASS" : "FAIL", styled ? 1 : 0, completed.count, ProcessInfo.processInfo.systemUptime - begin, ticks)
+                for item in completed { delete(item) }
+            }
+            NSLog("PHOTO_BURST_VERIFY COMPLETE no test shots saved to Photos")
+        }
+    }
 
-            if cube == nil {
-                cubeSize = 0
+    func verifyPhotoPipeline() {
+        Task { @MainActor [weak self] in
+            guard let self,
+                  let first = UIImage(named: "Story02")?.jpegData(compressionQuality: 0.9),
+                  let second = UIImage(named: "Story03")?.jpegData(compressionQuality: 0.9) else { return }
+            var style = StyleParams.identity; style.saturation = 0; style.contrast = 1.15
+            let firstID = UUID(), secondID = UUID(), thirdID = UUID()
+            let plain = StillComposer.Request(focalScale: 1, aspectRatio: nil, saveTarget: "BOTH")
+            let styled = StillComposer.Request(focalScale: 0.65, aspectRatio: 3.0 / 4, saveTarget: "BOTH", style: style)
+            stillContexts[firstID] = StillContext(request: plain, detail: "QA original", saves: false, mode: .photo)
+            stillContexts[secondID] = StillContext(request: styled, detail: "QA styled", saves: false, mode: .rangefinder)
+            stillContexts[thirdID] = StillContext(request: plain, detail: "QA repeat", saves: false, mode: .photo)
+            storeStill(fullData: second, raw: nil, simulated: true, id: secondID)
+            storeStill(fullData: first, raw: nil, simulated: true, id: firstID)
+            storeStill(fullData: first, raw: nil, simulated: true, id: thirdID)
+            let begin = ProcessInfo.processInfo.systemUptime
+            var ticks = 0
+            while pendingPhotoCount > 0, ProcessInfo.processInfo.systemUptime - begin < 20 {
+                ticks += 1
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            let a = captures.first { $0.id == firstID }
+            let b = captures.first { $0.id == secondID }
+            let grade = graded[AnyHashable(secondID)]
+            let correctA = a?.fullPhotoURL.flatMap { try? Data(contentsOf: $0) } == first
+            let correctB = b?.fullPhotoURL.flatMap { try? Data(contentsOf: $0) } == second
+            let files = [grade?.fullURL, grade?.cropURL].compactMap { $0 }
+            let grades = files.count == 2 && files.allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
+            let thumbnails = (a?.fullImage?.size.width ?? 10000) <= 640 && (b?.fullImage?.size.height ?? 10000) <= 640
+            let order = captures.filter { [firstID, secondID, thirdID].contains($0.id) }.map(\.id) == [thirdID, secondID, firstID]
+            NSLog("PHOTO_PIPELINE_VERIFY %@ isolated=%d gradedPair=%d thumbnailBudget=%d order=%d mainActorTicks=%ld pending=%ld", correctA && correctB && grades && thumbnails && order && pendingPhotoCount == 0 ? "PASS" : "FAIL", correctA && correctB ? 1 : 0, grades ? 1 : 0, thumbnails ? 1 : 0, order ? 1 : 0, ticks, pendingPhotoCount)
+            for id in [firstID, secondID, thirdID] {
+                if let item = captures.first(where: { $0.id == id }) { delete(item) }
             }
         }
+    }
+    #endif
 
-        let request = StillComposer.Request(
-            focalScale: scale,
-            aspectRatio: aspect.ratio,
-            saveTarget: saveTarget.rawValue,
-            style: styleParams,
-            cube: cube,
-            cubeSize: cubeSize,
-            lutIntensity: lutIntensity
-        )
-
-        let detail = caption
-        let saves = saveToPhotos
-
-        // Grading and encoding are heavy, so keep them off the main thread.
-        Task { [weak self] in
-            let result = await Task.detached(priority: .userInitiated) {
-                StillComposer.compose(
-                    imageData: fullData,
-                    request: request
-                )
-            }.value
-
-            guard let self else { return }
-
-            let item = CaptureItem(
-                fullImage: result.fullJPEG.flatMap { UIImage(data: $0) },
-                cropImage: result.cropJPEG.flatMap { UIImage(data: $0) },
-                movieURL: nil,
-                storiesURL: nil,
-                rawURL: nil,
-                detail: detail,
-                simulated: simulated,
-                mode: .photo
-            )
-
-            if result.gradedFull != nil || result.gradedCrop != nil {
-                graded[AnyHashable(item.id)] = GradedStills(
-                    full: result.gradedFull.flatMap { UIImage(data: $0) },
-                    crop: result.gradedCrop.flatMap { UIImage(data: $0) }
-                )
-            }
-
-            captures.insert(item, at: 0)
-            isBusy = false
-
-            guard saves else { return }
-
-            // With a look or LUT on, only the graded photo goes to Photos.
-            // Without one, the untouched photo (and the crop) is saved.
-            let finals: [Data?] = (result.gradedFull != nil || result.gradedCrop != nil)
-                ? [result.gradedFull, result.gradedCrop]
-                : [result.fullJPEG, result.cropJPEG]
-
-            for data in finals {
-                if let data {
-                    savePhotoToLibrary(data)
+    private func saveStillFiles(_ urls: [URL], raw: URL?) {
+        guard !urls.isEmpty else { return }
+        enqueueSave {
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    for url in urls {
+                        let request = PHAssetCreationRequest.forAsset()
+                        request.addResource(with: .photo, fileURL: url, options: nil)
+                    }
+                    if let raw {
+                        let request = PHAssetCreationRequest.forAsset()
+                        request.addResource(with: .photo, fileURL: raw, options: nil)
+                    }
                 }
-            }
+                return true
+            } catch { return false }
         }
     }
 
@@ -3332,6 +3410,8 @@ struct RulerSpec {
 
 // Graded copies of a saved photo. The originals stay on the capture item.
 struct GradedStills {
+    var fullURL: URL? = nil
+    var cropURL: URL? = nil
     var full: UIImage?
     var crop: UIImage?
     var movie: URL?
