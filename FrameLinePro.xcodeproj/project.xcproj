@@ -2,105 +2,67 @@
   "default-configuration": "Release",
   "configurations": [
     "Debug",
-    "Release"
+    "Release",
   ],
   "localizations": {
     "development": "en",
     "supported": [
-      "Base"
-    ]
+      "Base",
+    ],
   },
   "files": [
     {
       "kind": "folder",
       "path": "FrameLinePro",
       "target-membership": [
-        "FrameLinePro"
+        "FrameLinePro",
       ],
       "membership-exceptions": [
         {
           "target": "FrameLinePro",
           "exclusions": [
-            "Info.plist"
-          ]
-        }
-      ]
-    },
-    {
+            "Info.plist",
+          ],
+        },
+      ],
+    }, {
       "kind": "group",
       "name": "Products",
       "children": [
-        {
-          "path": "<PRODUCTS>/FrameLinePro.app",
-          "id": "000000000000000000000120",
-          "type": "wrapper.application",
-          "index": false
-        },
-        {
-          "path": "<PRODUCTS>/LockCapture.appex",
-          "id": "187A9BC930A2F8010039FCEE",
-          "type": "wrapper.extensionkit-extension",
-          "index": false,
-          "target-membership": [
-            {
-              "build-phase": "FrameLinePro/copy/Embed Lock Camera",
-              "header-preservation": "remove-on-copy"
-            }
-          ]
-        },
-        {
-          "path": "<PRODUCTS>/CameraControlWidget.appex",
-          "id": "187E65E530A2F802004E9569",
-          "type": "wrapper.app-extension",
-          "index": false,
-          "target-membership": [
-            {
-              "build-phase": "FrameLinePro/copy/Embed Camera Control",
-              "header-preservation": "remove-on-copy"
-            }
-          ]
-        }
-      ]
-    },
-    {
+        { "path": "<PRODUCTS>/FrameLinePro.app", "id": "000000000000000000000120", "type": "wrapper.application", "index": false },
+        { "path": "<PRODUCTS>/LockCapture.appex", "id": "187A9BC930A2F8010039FCEE", "type": "wrapper.extensionkit-extension", "index": false, "target-membership": [ { "build-phase": "FrameLinePro/copy/Embed Lock Camera", "header-preservation": "remove-on-copy" } ] },
+        { "path": "<PRODUCTS>/CameraControlWidget.appex", "id": "187E65E530A2F802004E9569", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "FrameLinePro/copy/Embed Camera Control", "header-preservation": "remove-on-copy" } ] },
+      ],
+    }, {
       "kind": "folder",
       "path": "LockCapture",
       "target-membership": [
-        "LockCapture"
+        "LockCapture",
       ],
       "membership-exceptions": [
         {
           "target": "LockCapture",
           "exclusions": [
-            "Info.plist"
-          ]
-        }
-      ]
-    },
-    {
+            "Info.plist",
+          ],
+        },
+      ],
+    }, {
       "kind": "folder",
       "path": "CameraControlWidget",
       "target-membership": [
-        "CameraControlWidget"
+        "CameraControlWidget",
       ],
       "membership-exceptions": [
         {
           "target": "CameraControlWidget",
           "exclusions": [
-            "Info.plist"
-          ]
-        }
-      ]
+            "Info.plist",
+          ],
+        },
+      ],
     },
-    {
-      "kind": "folder",
-      "path": "CaptureIntents",
-      "target-membership": [
-        "CameraControlWidget",
-        "FrameLinePro",
-        "LockCapture"
-      ]
-    }
+    { "kind": "folder", "path": "CaptureIntents", "target-membership": [ "CameraControlWidget", "FrameLinePro", "LockCapture" ] },
   ],
   "targets": [
     {
@@ -110,7 +72,7 @@
       "product-type": "application",
       "dependencies": [
         "LockCapture",
-        "CameraControlWidget"
+        "CameraControlWidget",
       ],
       "build-phases": [
         "compile-sources",
@@ -120,19 +82,18 @@
           "kind": "copy",
           "name": "Embed Lock Camera",
           "bundle-base-path": "build-products-directory",
-          "relative-path": "$(EXTENSIONS_FOLDER_PATH)"
-        },
-        {
+          "relative-path": "$(EXTENSIONS_FOLDER_PATH)",
+        }, {
           "kind": "copy",
           "name": "Embed Camera Control",
-          "bundle-base-path": "plugins-directory"
-        }
+          "bundle-base-path": "plugins-directory",
+        },
       ],
       "build-settings": {
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
         "ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS": "YES",
         "CODE_SIGN_STYLE": "Automatic",
-        "CURRENT_PROJECT_VERSION": "4",
+        "CURRENT_PROJECT_VERSION": "5",
         "DEVELOPMENT_TEAM": "VPJA9LZZCS",
         "ENABLE_APP_SANDBOX": "YES",
         "ENABLE_PREVIEWS": "YES",
@@ -157,7 +118,7 @@
         "INFOPLIST_KEY_UIUserInterfaceStyle": "Dark",
         "LD_RUNPATH_SEARCH_PATHS": "@executable_path/Frameworks",
         "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "@executable_path/../Frameworks",
-        "MARKETING_VERSION": "1.2.1",
+        "MARKETING_VERSION": "1.2.2",
         "PRODUCT_BUNDLE_IDENTIFIER": "com.edwinmuronzipersonalteam.FrameLinePro",
         "PRODUCT_NAME": "$(TARGET_NAME)",
         "REGISTER_APP_GROUPS": "YES",
@@ -169,10 +130,9 @@
         "SWIFT_EMIT_LOC_STRINGS": "YES",
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
         "SWIFT_VERSION": "5.0",
-        "TARGETED_DEVICE_FAMILY": "1,2"
-      }
-    },
-    {
+        "TARGETED_DEVICE_FAMILY": "1,2",
+      },
+    }, {
       "name": "LockCapture",
       "id": "187A9BC830A2F8010039FCEE",
       "product": "Products/LockCapture.appex",
@@ -180,12 +140,12 @@
       "build-phases": [
         "compile-sources",
         "frameworks",
-        "resources"
+        "resources",
       ],
       "build-settings": {
         "APPLICATION_EXTENSION_API_ONLY": "YES",
         "CODE_SIGN_STYLE": "Automatic",
-        "CURRENT_PROJECT_VERSION": "4",
+        "CURRENT_PROJECT_VERSION": "5",
         "DEVELOPMENT_TEAM": "VPJA9LZZCS",
         "GENERATE_INFOPLIST_FILE": "YES",
         "INFOPLIST_FILE": "LockCapture/Info.plist",
@@ -194,18 +154,17 @@
         "LD_RUNPATH_SEARCH_PATHS": [
           "$(inherited)",
           "@executable_path/Frameworks",
-          "@executable_path/../../Frameworks"
+          "@executable_path/../../Frameworks",
         ],
-        "MARKETING_VERSION": "1.2.1",
+        "MARKETING_VERSION": "1.2.2",
         "PRODUCT_BUNDLE_IDENTIFIER": "com.edwinmuronzipersonalteam.FrameLinePro.LockCapture",
         "PRODUCT_NAME": "$(TARGET_NAME)",
         "SKIP_INSTALL": "YES",
         "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
         "SWIFT_VERSION": "5.0",
-        "TARGETED_DEVICE_FAMILY": "1,2"
-      }
-    },
-    {
+        "TARGETED_DEVICE_FAMILY": "1,2",
+      },
+    }, {
       "name": "CameraControlWidget",
       "id": "187E65E430A2F802004E9569",
       "product": "Products/CameraControlWidget.appex",
@@ -213,12 +172,12 @@
       "build-phases": [
         "compile-sources",
         "frameworks",
-        "resources"
+        "resources",
       ],
       "build-settings": {
         "APPLICATION_EXTENSION_API_ONLY": "YES",
         "CODE_SIGN_STYLE": "Automatic",
-        "CURRENT_PROJECT_VERSION": "4",
+        "CURRENT_PROJECT_VERSION": "5",
         "DEVELOPMENT_TEAM": "VPJA9LZZCS",
         "GENERATE_INFOPLIST_FILE": "YES",
         "INFOPLIST_FILE": "CameraControlWidget/Info.plist",
@@ -227,17 +186,17 @@
         "LD_RUNPATH_SEARCH_PATHS": [
           "$(inherited)",
           "@executable_path/Frameworks",
-          "@executable_path/../../Frameworks"
+          "@executable_path/../../Frameworks",
         ],
-        "MARKETING_VERSION": "1.2.1",
+        "MARKETING_VERSION": "1.2.2",
         "PRODUCT_BUNDLE_IDENTIFIER": "com.edwinmuronzipersonalteam.FrameLinePro.CameraControlWidget",
         "PRODUCT_NAME": "$(TARGET_NAME)",
         "SKIP_INSTALL": "YES",
         "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
         "SWIFT_VERSION": "5.0",
-        "TARGETED_DEVICE_FAMILY": "1,2"
-      }
-    }
+        "TARGETED_DEVICE_FAMILY": "1,2",
+      },
+    },
   ],
   "build-settings": {
     "ALWAYS_SEARCH_USER_PATHS": "NO",
@@ -285,7 +244,7 @@
     "GCC_OPTIMIZATION_LEVEL[config=Debug]": "0",
     "GCC_PREPROCESSOR_DEFINITIONS[config=Debug]": [
       "DEBUG=1",
-      "$(inherited)"
+      "$(inherited)",
     ],
     "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
     "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
@@ -307,8 +266,8 @@
     "SWIFT_OPTIMIZATION_LEVEL[config=Debug]": "-Onone",
     "TVOS_DEPLOYMENT_TARGET": "27.2",
     "WATCHOS_DEPLOYMENT_TARGET": "27.2",
-    "XROS_DEPLOYMENT_TARGET": "27.2"
+    "XROS_DEPLOYMENT_TARGET": "27.2",
   },
   "last-upgrade": "27.0",
-  "last-swift-update": "27.0"
+  "last-swift-update": "27.0",
 }

@@ -2824,7 +2824,7 @@ final class CameraStore {
     }
 
     func delete(_ item: CaptureItem) {
-        let stillFiles = [item.fullPhotoURL, item.cropPhotoURL, item.livePhotoMovieURL, graded[AnyHashable(item.id)]?.fullURL, graded[AnyHashable(item.id)]?.cropURL].compactMap { $0 }
+        let stillFiles = [item.fullPhotoURL, item.cropPhotoURL, item.livePhotoMovieURL, item.depthMaskURL, graded[AnyHashable(item.id)]?.fullURL, graded[AnyHashable(item.id)]?.cropURL].compactMap { $0 }
         for file in stillFiles { try? FileManager.default.removeItem(at: file) }
         captures.removeAll { $0.id == item.id }
         if let url = graded[AnyHashable(item.id)]?.movie {
@@ -3130,7 +3130,8 @@ final class CameraStore {
             let prepared = await Task.detached(priority: .userInitiated) {
                 autoreleasepool {
                     let developed = context.natural ? raw.flatMap { PhotoDeveloper.natural($0) } : nil
-                    let portrait = context.portrait ? companion.depth.flatMap { PortraitRenderer.render(fullData, depth: $0) } : nil
+                    let depthMask = context.portrait ? companion.depth.flatMap(PortraitRenderer.mask) : nil
+                    let portrait = depthMask.flatMap { PortraitRenderer.render(fullData, mask: $0) }
                     var result = StillComposer.compose(imageData: developed ?? fullData, request: context.request)
                     if let portrait {
                         let bokeh = StillComposer.compose(imageData: portrait, request: context.request)
@@ -3139,6 +3140,19 @@ final class CameraStore {
                     }
                     var prepared = PreparedStill.make(result: result, raw: raw, id: id)
                     prepared.naturalDeveloped = developed != nil; prepared.portraitRendered = portrait != nil
+                    if depthMask != nil, prepared.fullURL == nil, let crop = prepared.cropURL {
+                        // Keep the full source privately even when only the
+                        // framed export was requested. Photos exports stay unchanged.
+                        let ext = fullData.starts(with: [0xff, 0xd8]) ? "jpg" : "heic"
+                        let url = crop.deletingLastPathComponent().appendingPathComponent("depth-original").appendingPathExtension(ext)
+                        if (try? fullData.write(to: url, options: .atomic)) != nil {
+                            prepared.fullURL = url; prepared.full = PreparedStill.thumbnail(fullData)
+                        }
+                    }
+                    if let depthMask, let file = prepared.fullURL {
+                        let url = file.deletingLastPathComponent().appendingPathComponent("depth-mask.json")
+                        if depthMask.save(url) { prepared.depthMaskURL = url }
+                    }
                     return prepared
                 }
             }.value
@@ -3151,7 +3165,7 @@ final class CameraStore {
             var item = CaptureItem(fullImage: prepared.full, cropImage: prepared.crop, movieURL: nil,
                 storiesURL: nil, rawURL: prepared.rawURL, detail: context.detail, simulated: simulated, mode: context.mode)
             item.id = id; item.date = context.date
-            item.fullPhotoURL = prepared.fullURL; item.cropPhotoURL = prepared.cropURL
+            item.fullPhotoURL = prepared.fullURL; item.cropPhotoURL = prepared.cropURL; item.depthMaskURL = prepared.depthMaskURL
             if prepared.gradedFull != nil || prepared.gradedCrop != nil {
                 var value = GradedStills(full: prepared.gradedFull, crop: prepared.gradedCrop)
                 value.fullURL = prepared.gradedFullURL; value.cropURL = prepared.gradedCropURL
@@ -3176,7 +3190,8 @@ final class CameraStore {
                 } catch { showToast("The Live Photo movie couldn’t be kept. Your still is safe."); if context.saves { saveStillFiles(prepared.photosURLs, raw: nil) } }
             } else if context.saves { saveStillFiles(prepared.photosURLs, raw: prepared.rawURL) }
             if context.live && companion.liveMovie == nil { showToast("Live motion wasn’t delivered. The still photo was kept.") }
-            if context.portrait && companion.depth == nil { showToast("Depth wasn’t delivered. The original photo was kept.") }
+            if context.portrait && !prepared.portraitRendered { showToast(companion.depth == nil ? "Depth wasn’t delivered. The original photo was kept." : "This scene had too little usable depth. The original photo was kept.") }
+            else if context.portrait && prepared.depthMaskURL == nil { showToast("The portrait was kept, but its depth edits couldn’t be stored. Check available space.") }
             if pendingPhotoCount == 0 { finalizationActivity?.end(); finalizationActivity = nil }
         }
     }
@@ -3200,7 +3215,7 @@ final class CameraStore {
                 }
                 let id = submitPhoto(), start = ProcessInfo.processInfo.systemUptime
                 while stillContexts[id] != nil, ProcessInfo.processInfo.systemUptime - start < 20 { try? await Task.sleep(for: .milliseconds(40)) }
-                let passed = verifiedDepthIDs.remove(id) != nil
+                let passed = verifiedDepthIDs.remove(id) != nil && captures.first(where: { $0.id == id })?.depthMaskURL.flatMap(DepthMask.load)?.image != nil
                 if passed { delivered += 1 }
                 NSLog("DEPTH_RESUME_VERIFY attempt=%ld %@", attempt, passed ? "PASS" : "FAIL")
                 if let item = captures.first(where: { $0.id == id }) { delete(item) }

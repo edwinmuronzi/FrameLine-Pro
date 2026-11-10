@@ -468,10 +468,10 @@ nonisolated final class CaptureEngine: NSObject,
         }
 
         // The size request was reworked, so earlier give-ups are cleared once.
-        if defaults.bool(forKey: "frameline.scaleResetV3") == false {
+        if defaults.bool(forKey: "frameline.scaleResetV4") == false {
             defaults.set(false, forKey: "frameline.scaleDisabled")
             defaults.set(false, forKey: "frameline.scaleTrial")
-            defaults.set(true, forKey: "frameline.scaleResetV3")
+            defaults.set(true, forKey: "frameline.scaleResetV4")
         }
 
         analysisUnscaled = defaults.bool(forKey: "frameline.scaleDisabled")
@@ -3535,12 +3535,11 @@ nonisolated final class CaptureEngine: NSObject,
     // smaller stream is much lighter on the camera and removes the stalls,
     // flicker and edge lines the full-size stream caused.
     private func analysisSettings() -> [String: Any] {
-        // BGRA: the camera does the colour conversion, so the preview is
-        // never read from raw 8-bit or 10-bit YUV planes.
-        var settings: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String:
-                kCVPixelFormatType_32BGRA
-        ]
+        // Keep the native 4:2:0 stream when available. Core Image handles
+        // its tagged YUV conversion; RGB scopes use a small separate proxy.
+        let native = analysisOutput.availableVideoPixelFormatTypes.contains(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
+        var settings: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String:
+            native ? kCVPixelFormatType_420YpCbCr8BiPlanarFullRange : kCVPixelFormatType_32BGRA]
 
         guard analysisUnscaled == false,
               let device = videoDevice else {
@@ -3553,7 +3552,9 @@ nonisolated final class CaptureEngine: NSObject,
         let short = Double(max(1, min(dims.width, dims.height)))
 
         // Portrait, like the viewfinder.
-        let target = min(dualPreview ? 1920.0 : 2048.0, long)
+        // Both crops must retain 1080p detail: the landscape crop in a
+        // portrait stream needs at least 1920 pixels across its short edge.
+        let target = min(dualPreview ? ceil(1920.0 * long / short) : 2048.0, long)
 
         var width = target * short / long
         var height = target
@@ -3562,18 +3563,19 @@ nonisolated final class CaptureEngine: NSObject,
             swap(&width, &height)
         }
 
-        // Multiples of 16 so rows carry no padding, but only when that keeps
-        // the exact shape. A changed shape makes the camera ignore the size
-        // and send the full 4K picture.
-        let alignedW = max(16, ((Int(width) + 8) / 16) * 16)
-        let alignedH = max(16, ((Int(height) + 8) / 16) * 16)
-
-        let wanted = width / height
-        let aligned = Double(alignedW) / Double(alignedH)
-        let keepsShape = abs(aligned - wanted) / wanted < 0.003
-
-        let evenW = keepsShape ? alignedW : max(2, (Int(width) / 2) * 2)
-        let evenH = keepsShape ? alignedH : max(2, (Int(height) / 2) * 2)
+        // Match the source aspect exactly, with even YUV dimensions.
+        // Rounding width/height independently can be rejected by capture
+        // devices with stricter dimension validation. Strides may be padded;
+        // Core Image and the analysis reader already honor those strides.
+        func gcd(_ a: Int, _ b: Int) -> Int { b == 0 ? a : gcd(b, a % b) }
+        let divisor = gcd(Int(short), Int(long))
+        var unitW = Int(short) / divisor * 2
+        var unitH = Int(long) / divisor * 2
+        if analysisSwap { swap(&unitW, &unitH) }
+        let requestedSteps = max(width, height) / Double(max(unitW, unitH))
+        let steps = max(1, min(divisor / 2, Int(dualPreview ? ceil(requestedSteps) : floor(requestedSteps))))
+        let evenW = unitW * steps
+        let evenH = unitH * steps
 
         settings[kCVPixelBufferWidthKey as String] = evenW
         settings[kCVPixelBufferHeightKey as String] = evenH
@@ -3716,6 +3718,8 @@ nonisolated final class CaptureEngine: NSObject,
         }
 
         analysisOutput.alwaysDiscardsLateVideoFrames = true
+        analysisOutput.automaticallyConfiguresOutputBufferDimensions = false
+        analysisOutput.deliversPreviewSizedOutputBuffers = false
 
         beginScaleTrial()
         analysisOutput.videoSettings = analysisSettings()

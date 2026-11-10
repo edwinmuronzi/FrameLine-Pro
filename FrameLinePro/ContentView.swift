@@ -14,6 +14,8 @@ struct ContentView: View {
                 CameraShowcase(story: FeatureStory.all[index])
             } else if ProcessInfo.processInfo.arguments.contains("--export-marketing") {
                 MarketingExportHost()
+            } else if ProcessInfo.processInfo.arguments.contains("--show-photo-editor") {
+                PhotoEditorShowcase()
             } else if ProcessInfo.processInfo.arguments.contains("--verify-editor-preview") {
                 EditorPreviewVerification()
             } else if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--verify-") }) {

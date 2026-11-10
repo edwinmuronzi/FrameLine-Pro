@@ -50,3 +50,13 @@ Thermal stress testing exposed reduced throughput on a phone already in the seri
 Do not probe recording codecs from Photo/Rangefinder mode: changing the active video format can silently disable depth delivery. Configure depth-compatible formats before capture and preserve the restored camera configuration on foreground resume. Shared CameraCaptureIntent membership belongs to the app, WidgetKit control and secure capture extension; the extension must handle hardware capture events. Test actual Lock Screen routing on hardware, not solely build metadata.
 
 Use native NV12 output for 8-bit styled recordings and preserve explicit transfer/matrix attachments. The color diagnostic compares mean linear RGB error, not an sRGB-encoded error statistic. Keep the longer efficiency test and inspect both frame counts and thermal state; successful file creation alone does not prove smooth sustained recording. See VALIDATION.md for measured results and COMPETITOR_REVIEW.md for remaining product priorities.
+
+## 1.2.2 photo lab and capture buffers
+
+PhotoEdit uses optional crop/straighten/export/depth fields so older recipes decode unchanged. PhotoGeometry shares crop transforms between the GPU preview and final export, trims rotation corners and snaps crop boundaries to integer pixels to avoid transparent JPEG fringes. Export resizing uses clamped Lanczos sampling and never upscales. Keep the preview above the scrollable controls.
+
+New depth captures store an oriented, normalized float32 mask in depth-mask.json. The main library records its relative path; deleting a capture deletes the mask too. Save a private full source when a depth capture requested only a framed export. Existing images without a mask keep their prior editor behavior; never synthesize depth or advertise Apple editable Portrait assets.
+
+Analysis output explicitly opts out of automatic/preview buffer dimensions before supplying exact dimensions, and requests native 8-bit 4:2:0 where supported. Use even-pixel multiples of the source’s reduced aspect ratio so stricter camera implementations accept the size request. For Dual Shot, size the short edge to at least 1920 pixels so the landscape crop keeps 1080p detail. Do not shrink to a 1920-pixel long edge; that would require upscaling the landscape output. Retain the existing scaling-crash fallback.
+
+`--verify-editor-preview` includes PhotoLabVerification: crop/rotation/position cases, empty-corner detection, output sizes, no upscaling, legacy recipes and lossless depth-mask roundtrip. `--show-photo-editor --expand-editor` previews the real editor with isolated sample files. These routes are Debug-only.

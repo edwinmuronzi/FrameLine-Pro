@@ -8,6 +8,14 @@ nonisolated struct PhotoEdit: Codable, Equatable, Sendable {
     var saturation = 1.0
     var warmth = 0.0
     var useRAW: Bool? = nil
+    var crop: PhotoCrop? = nil
+    var cropX: Double? = nil
+    var cropY: Double? = nil
+    var straighten: Double? = nil
+    var exportLongEdge: Int? = nil
+    var depthAmount: Double? = nil
+    var depthSeparation: Double? = nil
+    var hasCustomFraming: Bool { (crop != nil && crop != .original) || abs(straighten ?? 0) > 0.00001 }
 }
 
 // File names are relative to Documents, so records survive app-container changes.
@@ -20,6 +28,7 @@ nonisolated struct LibraryRecord: Codable, Sendable {
     var gradedMovie: String? = nil
     var gradedReel: String? = nil
     var clip: ClipInfo? = nil
+    var depthMask: String? = nil
 }
 
 actor CaptureLibrary {
@@ -55,7 +64,7 @@ nonisolated enum PhotoDeveloper {
         filter.isDraftModeEnabled = true; filter.scaleFactor = 0.3
         guard let image = filter.outputImage else { return nil }; return encode(image)
     }
-    static func develop(_ source: Data, edit: PhotoEdit, rawData: Data? = nil) -> Data? {
+    static func develop(_ source: Data, edit: PhotoEdit, rawData: Data? = nil, depthMask: CIImage? = nil) -> Data? {
         var base: CIImage?
         if edit.useRAW == true, let rawData, let filter = CIRAWFilter(imageData: rawData, identifierHint: nil) {
             filter.exposure = Float(edit.exposure)
@@ -64,10 +73,10 @@ nonisolated enum PhotoDeveloper {
         guard let image = base else { return nil }
         var recipe = edit
         if edit.useRAW == true && rawData != nil { recipe.exposure = 0 }
-        return encode(adjust(image, edit: recipe))
+        return encode(exportImage(adjust(image, edit: recipe, depthMask: depthMask), longEdge: edit.exportLongEdge))
     }
-    static func adjust(_ source: CIImage, edit: PhotoEdit) -> CIImage {
-        var image = source
+    static func adjust(_ source: CIImage, edit: PhotoEdit, depthMask: CIImage? = nil) -> CIImage {
+        var image = depthMask.map { PortraitRenderer.adjust(source, mask: $0, amount: edit.depthAmount ?? 0.375, separation: edit.depthSeparation ?? 0.5) } ?? source
         if let look = FilmLook.lineup.first(where: { $0.id == edit.styleID }) ?? CustomLookRegistry.shared.look(for: edit.styleID).map(FilmLook.custom), look.id != "standard" {
             let style = StyleParams(look: look, options: LookOptions(), dials: LookRecipe.defaultDials(for: look.id))
             image = StyleGrade.grade(image, cube: nil, cubeSize: 0, intensity: 1, style: style)
@@ -75,7 +84,7 @@ nonisolated enum PhotoDeveloper {
         image = image.applyingFilter("CIExposureAdjust", parameters: ["inputEV": edit.exposure])
             .applyingFilter("CIColorControls", parameters: ["inputSaturation": edit.saturation])
             .applyingFilter("CITemperatureAndTint", parameters: ["inputNeutral": CIVector(x: 6500, y: 0), "inputTargetNeutral": CIVector(x: 6500 + edit.warmth * 2000, y: 0)])
-        return image
+        return geometry(image, edit: edit)
     }
     static func encode(_ image: CIImage) -> Data? {
         context.jpegRepresentation(of: image, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.97])
@@ -107,7 +116,7 @@ extension CameraStore {
                     let full = url(record.full), crop = url(record.crop), movie = url(record.movie)
                     guard full != nil || crop != nil || movie != nil else { return nil }
                     var item = CaptureItem(fullImage: record.id == records.first?.id ? thumb(full) : nil, cropImage: nil, movieURL: movie, storiesURL: url(record.reel), rawURL: url(record.raw), detail: record.detail, simulated: false, mode: CaptureMode(rawValue: record.mode) ?? .photo)
-                    item.id = record.id; item.date = record.date; item.fullPhotoURL = full; item.cropPhotoURL = crop; item.livePhotoMovieURL = url(record.liveMovie)
+                    item.id = record.id; item.date = record.date; item.fullPhotoURL = full; item.cropPhotoURL = crop; item.livePhotoMovieURL = url(record.liveMovie); item.depthMaskURL = url(record.depthMask)
                     let gf = url(record.gradedFull), gc = url(record.gradedCrop)
                     let grade = gf == nil && gc == nil && record.gradedMovie == nil ? nil : GradedStills(fullURL: gf, cropURL: gc, full: record.id == records.first?.id ? thumb(gf) : nil, crop: nil, movie: url(record.gradedMovie), storiesMovie: url(record.gradedReel))
                     return (item, grade, record.edit)
@@ -140,7 +149,7 @@ extension CameraStore {
             let grade = graded[AnyHashable(item.id)]
             return LibraryRecord(id: item.id, date: item.date, detail: item.detail, mode: item.mode.rawValue,
                 full: relative(item.fullPhotoURL), crop: relative(item.cropPhotoURL), raw: relative(item.rawURL),
-                movie: relative(item.movieURL), reel: relative(item.storiesURL), gradedFull: relative(grade?.fullURL), gradedCrop: relative(grade?.cropURL), edit: photoEdits[item.id], liveMovie: relative(item.livePhotoMovieURL), gradedMovie: relative(grade?.movie), gradedReel: relative(grade?.storiesMovie), clip: clipInfo[AnyHashable(item.id)])
+                movie: relative(item.movieURL), reel: relative(item.storiesURL), gradedFull: relative(grade?.fullURL), gradedCrop: relative(grade?.cropURL), edit: photoEdits[item.id], liveMovie: relative(item.livePhotoMovieURL), gradedMovie: relative(grade?.movie), gradedReel: relative(grade?.storiesMovie), clip: clipInfo[AnyHashable(item.id)], depthMask: relative(item.depthMaskURL))
         }
         let previous = librarySaveTask
         librarySaveTask = Task {
@@ -156,12 +165,22 @@ extension CameraStore {
         let crop = item.fullPhotoURL != nil ? item.cropPhotoURL : nil
         let prepared = await Task.detached(priority: .userInitiated) { () -> ((URL, UIImage)?, (URL, UIImage)?) in
             let raw = edit.useRAW == true ? item.rawURL.flatMap { try? Data(contentsOf: $0) } : nil
+            let depthMask = item.depthMaskURL.flatMap(DepthMask.load)?.image
             let sourceData = try? Data(contentsOf: source)
-            let rawFull = raw.flatMap { _ in sourceData.flatMap { PhotoDeveloper.develop($0, edit: edit, rawData: raw) } }
+            let rawFull = raw.flatMap { _ in sourceData.flatMap { PhotoDeveloper.develop($0, edit: edit, rawData: raw, depthMask: depthMask) } }
             if edit.useRAW == true && rawFull == nil { return (nil, nil) }
             func render(_ url: URL, role: String) -> (URL, UIImage)? {
                 guard let data = try? Data(contentsOf: url) else { return nil }
-                var output = rawFull ?? PhotoDeveloper.develop(data, edit: edit)
+                var fileMask = depthMask
+                if role == "crop", let depthMask, let sourceData,
+                   let full = CIImage(data: sourceData, options: [.applyOrientationProperty: true]),
+                   let cropped = CIImage(data: data, options: [.applyOrientationProperty: true]) {
+                    let width = depthMask.extent.width * min(1, cropped.extent.width / full.extent.width)
+                    let height = depthMask.extent.height * min(1, cropped.extent.height / full.extent.height)
+                    let rect = CGRect(x: (depthMask.extent.width - width) / 2, y: (depthMask.extent.height - height) / 2, width: width, height: height)
+                    fileMask = depthMask.cropped(to: rect).transformed(by: CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
+                }
+                var output = rawFull ?? PhotoDeveloper.develop(data, edit: edit, depthMask: fileMask)
                 if role == "crop", let rawFull, let developed = CIImage(data: rawFull),
                    let sourceData, let original = CIImage(data: sourceData, options: [.applyOrientationProperty: true]),
                    let cropOriginal = CIImage(data: data, options: [.applyOrientationProperty: true]) {
@@ -174,6 +193,7 @@ extension CameraStore {
                 do { try output.write(to: file, options: .atomic); return (file, thumb) } catch { return nil }
             }
             let full = render(source, role: "full")
+            if edit.hasCustomFraming { return (full, full) }
             let framed = crop.flatMap { $0 == source ? full : render($0, role: "crop") }
             return (full, framed)
         }.value

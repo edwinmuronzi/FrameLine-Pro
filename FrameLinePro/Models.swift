@@ -405,4 +405,5 @@ struct CaptureItem: Identifiable {
     var fullPhotoURL: URL? = nil
     var cropPhotoURL: URL? = nil
     var livePhotoMovieURL: URL? = nil
+    var depthMaskURL: URL? = nil
 }

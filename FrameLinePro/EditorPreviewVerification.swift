@@ -31,10 +31,13 @@ struct EditorPreviewVerification: View {
             UIApplication.shared.isIdleTimerDisabled = true
             defer { UIApplication.shared.isIdleTimerDisabled = false }
             try? await Task.sleep(for: .seconds(1))
+            _ = await Task.detached(priority: .userInitiated) { PhotoLabVerification.run() }.value
+            _ = await PhotoLabVerification.verifySave()
             EditorPreviewProbe.shared.reset()
             for index in 0..<120 {
                 edit.exposure = sin(Double(index) / 12)
                 edit.saturation = 0.7 + Double(index % 25) / 50
+                edit.crop = .portrait; edit.straighten = sin(Double(index) / 20) * 5
                 try? await Task.sleep(for: .milliseconds(16))
             }
             try? await Task.sleep(for: .seconds(1))

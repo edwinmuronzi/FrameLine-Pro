@@ -781,17 +781,17 @@ struct CaptureDetail: View {
                 }
 
                 if let full = fullResolutionPreview ?? (showingGraded ? (graded?.full ?? item.fullImage) : item.fullImage) {
-                    labeled("Full frame", image: full)
+                    labeled(showingGraded && store.photoEdits[item.id]?.hasCustomFraming == true ? "Edited photo" : "Full frame", image: full)
                 }
 
-                if let crop = cropResolutionPreview ?? (showingGraded ? (graded?.crop ?? item.cropImage) : item.cropImage) {
+                if cropPhotoURL != fullPhotoURL, let crop = cropResolutionPreview ?? (showingGraded ? (graded?.crop ?? item.cropImage) : item.cropImage) {
                     labeled("Frame lines", image: crop)
                 }
 
                 if item.fullPhotoURL != nil || item.cropPhotoURL != nil {
                     Button { showPhotoEditor = true } label: { Label("Develop photo", systemImage: "slider.horizontal.3") }
                         .tint(Theme.gold)
-                    Text("Adjust brightness, color and the look. Your original stays safe.").font(.caption).foregroundStyle(.secondary)
+                    Text("Adjust the look, crop, horizon and saved size. New depth captures also let you change background blur. Your original stays safe.").font(.caption).foregroundStyle(.secondary)
                 }
 
                 if let live = item.livePhotoMovieURL {

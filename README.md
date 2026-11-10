@@ -64,9 +64,21 @@ A/B marks remember focus distances. They do **not** track a person who moves clo
 
 ### A gallery you can return to
 
-Captures, original files and edit recipes stay in the app after closing it. Open a photo and choose **Develop photo** to change the look, brightness, color strength or warmth. The full-resolution original is retained; edits are separate. When a full-frame original and RAW are available, enable **Develop from RAW** to adjust exposure in the digital negative before rendering. A smaller draft preview keeps editing responsive; the saved edit uses the full RAW. Frame-only captures can still be edited from their original crop and their DNG shared separately. Reopen Develop photo to revise the saved recipe, or switch to Original in the viewer. Sharing sends the displayed version at full resolution. Saving an edit does not silently overwrite the copy already in Photos.
+Captures, original files and edit recipes stay in the app after closing it. Open a photo and choose **Develop photo** to change the look, brightness, color strength or warmth. The full-resolution original is retained; edits are separate. The preview stays visible above the scrolling controls. When a full-frame original and RAW are available, enable **Develop from RAW** to adjust exposure in the digital negative before rendering. A smaller draft preview keeps editing responsive; the saved edit uses the full RAW. Frame-only captures can still be edited from their original crop and their DNG shared separately. Reopen Develop photo to revise the saved recipe, or switch to Original in the viewer. Sharing sends the displayed version at its saved size. Saving an edit does not silently overwrite the copy already in Photos.
 
 The gallery is local to this installation, not an online backup. Deleting a capture removes its app files; copies already saved to Photos remain there. Locked-screen captures transfer into the app gallery after unlocking; export/share them from there when needed.
+
+### Frame, straighten and adjust depth
+
+In **Develop photo**, open **Frame & export**:
+
+- **Crop:** keep the original shape, or choose Square, 4:5, 3:2 or 16:9. Move left/right or up/down to position the crop where the new shape leaves room.
+- **Straighten:** level a tilted horizon by up to 10°. The edges trim automatically so empty corners do not appear.
+- **Saved size:** keep full resolution or choose a longest edge of 3840, 2048 or 1080 pixels. Smaller copies are easier to send. The app never enlarges a smaller original.
+- **Background blur:** on new depth captures, soften the background or slide to zero to keep the original sharpness.
+- **Subject separation:** choose how much of the scene stays sharp. Check hair, transparent objects and complex edges before sharing.
+
+New depth captures retain a lossless floating-point depth mask beside the original, so these adjustments survive closing the app. Older photos without a retained mask cannot gain real depth information retroactively. Exported portraits are ordinary edited images, not Apple Portrait assets with editable depth in Photos. A full source is kept privately for new depth shots even when only a framed Photos export was requested. Crop, straightening, depth and size edits do not alter the original or overwrite its existing Photos copy. Edits currently export SDR JPEG; HDR/gain-map preservation remains future work.
 
 ### Manage styles and presets
 

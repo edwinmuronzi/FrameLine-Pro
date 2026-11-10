@@ -33,6 +33,7 @@ nonisolated struct PreparedStill: @unchecked Sendable {
     var photosURLs: [URL] = []
     var naturalDeveloped = false
     var portraitRendered = false
+    var depthMaskURL: URL?
 
     static func thumbnail(_ data: Data, maxPixel: Int = 640) -> UIImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),

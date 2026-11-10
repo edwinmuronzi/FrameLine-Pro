@@ -7,6 +7,7 @@ import SwiftUI
 struct InteractivePhotoPreview: UIViewRepresentable {
     let source: CIImage
     let edit: PhotoEdit
+    var depthMask: CIImage? = nil
     func makeCoordinator() -> Renderer { Renderer() }
     func makeUIView(context: Context) -> MTKView {
         let view = MTKView(frame: .zero, device: context.coordinator.device)
@@ -17,7 +18,7 @@ struct InteractivePhotoPreview: UIViewRepresentable {
         return view
     }
     func updateUIView(_ view: MTKView, context: Context) {
-        context.coordinator.source = source; context.coordinator.edit = edit
+        context.coordinator.source = source; context.coordinator.edit = edit; context.coordinator.depthMask = depthMask
         view.setNeedsDisplay()
     }
     final class Renderer: NSObject, MTKViewDelegate {
@@ -26,6 +27,7 @@ struct InteractivePhotoPreview: UIViewRepresentable {
         lazy var context = device.map { CIContext(mtlDevice: $0, options: [.cacheIntermediates: true]) }
         var source: CIImage?
         var edit = PhotoEdit()
+        var depthMask: CIImage?
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { view.setNeedsDisplay() }
         func draw(in view: MTKView) {
             guard let source, let drawable = view.currentDrawable, let commands, let command = commands.makeCommandBuffer(), let context else { return }
@@ -35,7 +37,7 @@ struct InteractivePhotoPreview: UIViewRepresentable {
             let size = view.drawableSize
             guard size.width > 0, size.height > 0 else { return }
             var recipe = edit; recipe.useRAW = false
-            let image = PhotoDeveloper.adjust(source, edit: recipe)
+            let image = PhotoDeveloper.adjust(source, edit: recipe, depthMask: depthMask)
             let scale = min(size.width / image.extent.width, size.height / image.extent.height)
             let placed = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
                 .transformed(by: CGAffineTransform(scaleX: scale, y: scale))

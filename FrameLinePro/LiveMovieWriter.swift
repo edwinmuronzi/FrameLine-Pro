@@ -91,7 +91,7 @@ nonisolated final class LiveMovieWriter: @unchecked Sendable {
         #if DEBUG
         if !reportedSource {
             reportedSource = true
-            NSLog("LIVE_SOURCE_VERIFY %ldx%ld analysis=%d", CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer), usesAnalysisStream ? 1 : 0)
+            NSLog("LIVE_SOURCE_VERIFY %ldx%ld analysis=%d inputFormat=%u", CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer), usesAnalysisStream ? 1 : 0, CVPixelBufferGetPixelFormatType(buffer))
         }
         #endif
         let original = CIImage(cvPixelBuffer: buffer, options: [.colorSpace: NSNull()]).oriented(sourceOrientation)
