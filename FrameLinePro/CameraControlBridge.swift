@@ -3,10 +3,11 @@ import AVFoundation
 // The Camera Control button on iPhone 16 and later: a slider for exposure and
 // a picker for the lens, both shown on the phone's own overlay. The press
 // itself, for the shutter, is handled in the screen.
-final class CameraControlBridge: NSObject, AVCaptureSessionControlsDelegate {
+nonisolated final class CameraControlBridge: NSObject, AVCaptureSessionControlsDelegate, @unchecked Sendable {
 
     private let session: AVCaptureSession
-    private let queue = DispatchQueue(label: "frameline.cameracontrol")
+    private let configurationQueue: DispatchQueue
+    private let delegateQueue = DispatchQueue(label: "frameline.cameracontrol")
 
     // Called on the main actor when a control moves.
     var onExposure: (@MainActor (Float) -> Void)?
@@ -16,26 +17,35 @@ final class CameraControlBridge: NSObject, AVCaptureSessionControlsDelegate {
     private var slider: AnyObject?
     private var picker: AnyObject?
 
-    init(session: AVCaptureSession) {
+    init(session: AVCaptureSession, configurationQueue: DispatchQueue) {
         self.session = session
+        self.configurationQueue = configurationQueue
         super.init()
     }
 
     // Adds the controls once, and again only if the list of lenses changes.
     func install(lensTitles: [String], selectedLens: Int, exposure: Float) {
+        configurationQueue.async { [weak self] in
+            self?.installOnQueue(lensTitles: lensTitles, selectedLens: selectedLens, exposure: exposure)
+        }
+    }
+
+    private func installOnQueue(lensTitles: [String], selectedLens: Int, exposure: Float) {
         guard #available(iOS 18.0, *) else { return }
         guard session.supportsControls else { return }
         guard lensTitles != installedTitles || slider == nil else { return }
 
         installedTitles = lensTitles
 
-        session.setControlsDelegate(self, queue: queue)
+        session.setControlsDelegate(self, queue: delegateQueue)
         session.beginConfiguration()
 
         for control in session.controls {
             session.removeControl(control)
         }
 
+        slider = nil
+        picker = nil
         let exposureSlider = AVCaptureSlider(
             "Exposure",
             symbolName: "plusminus.circle",
@@ -82,6 +92,12 @@ final class CameraControlBridge: NSObject, AVCaptureSessionControlsDelegate {
 
     // Keeps the button's own display in step with changes made on screen.
     func sync(exposure: Float? = nil, lensIndex: Int? = nil) {
+        configurationQueue.async { [weak self] in
+            self?.syncOnQueue(exposure: exposure, lensIndex: lensIndex)
+        }
+    }
+
+    private func syncOnQueue(exposure: Float?, lensIndex: Int?) {
         guard #available(iOS 18.0, *) else { return }
 
         if let exposure,

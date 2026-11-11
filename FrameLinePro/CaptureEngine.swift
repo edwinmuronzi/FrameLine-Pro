@@ -529,6 +529,10 @@ nonisolated final class CaptureEngine: NSObject,
         })
     }
 
+    func makeCameraControlBridge() -> CameraControlBridge {
+        CameraControlBridge(session: session, configurationQueue: queue)
+    }
+
     // MARK: - Session Controls
 
     func start() {
@@ -1421,6 +1425,29 @@ nonisolated final class CaptureEngine: NSObject,
     }
     #endif
 
+    #if DEBUG
+    private var photoCombinationChecks: [UUID: String] = [:]
+
+    func verifyPhotoCombinations() {
+        for (index, check) in ["Depth", "Live + Depth", "ProRAW + HEIF"].enumerated() {
+            queue.asyncAfter(deadline: .now() + .seconds(4 + index * 9)) { [weak self] in
+                guard let self else { return }
+                let live = index == 1
+                self.configurePhotoCompanions(live: live, depth: index != 2)
+                self.queue.asyncAfter(deadline: .now() + .seconds(2)) { [weak self] in
+                    guard let self, self.session.isRunning else {
+                        NSLog("CAPTURE_COMBINATION_VERIFY %@ camera unavailable", check)
+                        return
+                    }
+                    let id = UUID()
+                    self.photoCombinationChecks[id] = check
+                    self.capturePhoto(raw: index == 2, flash: .off, format: .heif, id: id)
+                }
+            }
+        }
+    }
+    #endif
+
     func capturePhoto(raw: Bool, flash: FlashChoice, format: PhotoFormat, id: UUID = UUID(), nativeRaw: Bool = false) {
         queue.async { [weak self] in
             guard let self else { return }
@@ -1431,7 +1458,7 @@ nonisolated final class CaptureEngine: NSObject,
                 format: format, nativeRaw: nativeRaw
             )
 
-            if self.photoOutput.isLivePhotoCaptureEnabled {
+            if self.photoOutput.isLivePhotoCaptureEnabled, !self.photoOutput.isLivePhotoCaptureSuspended {
                 settings.livePhotoMovieFileURL = FileManager.default.temporaryDirectory.appendingPathComponent("Live-\(id.uuidString).mov")
             }
             if self.requestedPhotoDepth, self.photoOutput.isDepthDataDeliverySupported, !self.photoOutput.isDepthDataDeliveryEnabled { self.photoOutput.isDepthDataDeliveryEnabled = true }
@@ -1456,6 +1483,27 @@ nonisolated final class CaptureEngine: NSObject,
                 self?.queue.async { [weak self] in
                     guard let self else { return }
                     self.photoDelegates[uniqueID] = nil
+                    #if DEBUG
+                    if let check = self.photoCombinationChecks.removeValue(forKey: id) {
+                        let hdr = processed.flatMap(HDRPhoto.expanded) != nil
+                        NSLog("CAPTURE_COMBINATION_VERIFY %@ processed=%d raw=%d depth=%d live=%d hdr=%d",
+                            check, processed == nil ? 0 : 1, raw == nil ? 0 : 1, companion.depth == nil ? 0 : 1,
+                            companion.liveMovie == nil ? 0 : 1, hdr ? 1 : 0)
+                        if check == "ProRAW + HEIF", hdr, let processed {
+                            Task.detached(priority: .utility) {
+                                let request = StillComposer.Request(focalScale: 0.8, aspectRatio: 1, saveTarget: "BOTH",
+                                    style: StyleParams(saturation: 0.95), preserveHDR: true)
+                                let result = StillComposer.compose(imageData: processed, request: request)
+                                NSLog("HDR_CAPTURE_VERIFY crop=%d graded=%d gradedCrop=%d",
+                                    result.cropJPEG.flatMap(HDRPhoto.expanded) == nil ? 0 : 1,
+                                    result.gradedFull.flatMap(HDRPhoto.expanded) == nil ? 0 : 1,
+                                    result.gradedCrop.flatMap(HDRPhoto.expanded) == nil ? 0 : 1)
+                            }
+                        }
+                        if let movie = companion.liveMovie { try? FileManager.default.removeItem(at: movie) }
+                        return
+                    }
+                    #endif
                     self.emit(.photo(id: id, processed: processed, raw: raw, companion: companion))
                     if self.photoDelegates.isEmpty, self.stopAfterPhotos, !self.sessionWanted {
                         self.stopAfterPhotos = false
@@ -2680,12 +2728,24 @@ nonisolated final class CaptureEngine: NSObject,
         var settings: AVCapturePhotoSettings
 
         let rawTypes = photoOutput.availableRawPhotoPixelFormatTypes
-        let chosenRaw = nativeRaw ? rawTypes.first(where: { AVCapturePhotoOutput.isBayerRAWPixelFormat($0) }) : rawTypes.first
-        if raw, let rawType = chosenRaw {
+        let proRaw = rawTypes.first(where: AVCapturePhotoOutput.isAppleProRAWPixelFormat)
+        let bayer = rawTypes.first(where: AVCapturePhotoOutput.isBayerRAWPixelFormat)
+        let canUseBayer = abs((videoDevice?.videoZoomFactor ?? 0) - 1) < 0.0001
+            && abs((photoOutput.connection(with: .video)?.videoScaleAndCropFactor ?? 1) - 1) < 0.0001
+        let chosenRaw: OSType?
+        if requestedPhotoLive || requestedPhotoDepth {
+            chosenRaw = nil
+        } else if nativeRaw {
+            chosenRaw = canUseBayer ? bayer : nil
+        } else {
+            chosenRaw = proRaw ?? (canUseBayer ? bayer : nil)
+        }
+        if raw, let rawType = chosenRaw, photoOutput.availablePhotoCodecTypes.contains(codec) {
             settings = AVCapturePhotoSettings(
                 rawPixelFormatType: rawType,
                 processedFormat: processed
             )
+            if AVCapturePhotoOutput.isBayerRAWPixelFormat(rawType) { settings.photoQualityPrioritization = .speed }
 
         } else if photoOutput.availablePhotoCodecTypes.contains(codec) {
             settings = AVCapturePhotoSettings(format: processed)

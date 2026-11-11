@@ -22,6 +22,9 @@ final class CameraStore {
         let saved = UserDefaults.standard.stringArray(forKey: "frameline.shortcuts.v1")?.compactMap(ViewfinderShortcut.init(rawValue:))
         return saved?.count == 3 ? saved! : [.timelapse, .magnify, .timer]
     }() { didSet { if !isShowcase { UserDefaults.standard.set(viewfinderShortcuts.map(\.rawValue), forKey: "frameline.shortcuts.v1") } } }
+    var photoToolbar = PhotoToolbarControl.load() {
+        didSet { if !isShowcase { UserDefaults.standard.set(photoToolbar.map(\.rawValue), forKey: "frameline.photoToolbar.v1") } }
+    }
     @ObservationIgnored var lockedImportObserver: Task<Void, Never>?
     var importingLockedCaptures = false
     var libraryReady = false
@@ -100,6 +103,9 @@ final class CameraStore {
     var naturalPhoto = false
     var livePhoto = false
     var depthPortrait = false
+    var captureHDRHighlights = UserDefaults.standard.bool(forKey: "frameline.captureHDRHighlights") {
+        didSet { if !isShowcase { UserDefaults.standard.set(captureHDRHighlights, forKey: "frameline.captureHDRHighlights") } }
+    }
     var motionExposure: MotionExposure = .off
     var motionExposureSeconds = 2
     var motionExposureActive = false
@@ -383,7 +389,15 @@ final class CameraStore {
         // Looked up by id, so a preset you are editing shows its newest values.
         let resolved = allLooks.first { $0.id == look.id } ?? look
 
-        return StyleParams(look: resolved, options: lookOptions, dials: currentDials)
+        var params = StyleParams(look: resolved, options: lookOptions, dials: currentDials)
+        if mode != .video {
+            params.refinedPhotoTexture = true
+            if lookOptions.glowOn && resolved.id == "night35" {
+                params.glow = 0
+                params.halation = 0.38
+            }
+        }
+        return params
     }
 
     // The presets, then the ones you made.
@@ -556,6 +570,7 @@ final class CameraStore {
         var natural = false
         var live = false
         var portrait = false
+        var expectsRaw = false
     }
     @ObservationIgnored private var stillContexts: [UUID: StillContext] = [:]
     @ObservationIgnored private var compositionTail: Task<Void, Never>?
@@ -640,7 +655,7 @@ final class CameraStore {
             }
         }
 
-        if mode != .video, rawEnabled {
+        if mode != .video, rawEnabled, !depthPortrait, !livePhoto {
             parts.append("RAW")
         }
 
@@ -875,6 +890,13 @@ final class CameraStore {
 
         refreshRecordingCodecs()
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--verify-photo-combinations") {
+            selectMode(.photo)
+            UIApplication.shared.isIdleTimerDisabled = true
+            focusPullLensEnabled = false
+            if isFrontCamera { flip() }
+            engine.verifyPhotoCombinations()
+        }
         if ProcessInfo.processInfo.arguments.contains("--verify-motion-exposure") {
             selectMode(.photo)
             engine.verifyMotionExposure()
@@ -2002,7 +2024,7 @@ final class CameraStore {
     // The Camera Control button on iPhone 16 and later.
     private func installCameraControls() {
         if cameraControls == nil {
-            let bridge = CameraControlBridge(session: engine.session)
+            let bridge = engine.makeCameraControlBridge()
 
             bridge.onExposure = { [weak self] value in
                 self?.setExposure((value * 10).rounded() / 10)
@@ -3214,7 +3236,7 @@ final class CameraStore {
         let cube = lut.flatMap { LUTMonitor.cubeData(from: $0.data, size: Int($0.size)) }
         return StillContext(request: StillComposer.Request(focalScale: scale, aspectRatio: aspect.ratio,
             saveTarget: saveTarget.rawValue, style: styleParams, cube: cube, cubeSize: cube == nil ? 0 : (lut?.size ?? 0),
-            lutIntensity: lutIntensity), detail: motionDetail ?? caption, saves: saveToPhotos, mode: mode, natural: motionDetail == nil && naturalPhoto, live: motionDetail == nil && livePhoto, portrait: motionDetail == nil && depthPortrait)
+            lutIntensity: lutIntensity, preserveHDR: motionDetail == nil && captureHDRHighlights), detail: motionDetail ?? caption, saves: saveToPhotos, mode: mode, natural: motionDetail == nil && naturalPhoto, live: motionDetail == nil && livePhoto, portrait: motionDetail == nil && depthPortrait, expectsRaw: motionDetail == nil && rawEnabled && !livePhoto && !depthPortrait)
     }
 
     private func storeStill(fullData: Data, raw: Data?, simulated: Bool, id: UUID = UUID(), companion: PhotoCompanion = PhotoCompanion()) {
@@ -3229,7 +3251,7 @@ final class CameraStore {
                 autoreleasepool {
                     let developed = context.natural ? raw.flatMap { PhotoDeveloper.natural($0) } : nil
                     let depthMask = context.portrait ? companion.depth.flatMap(PortraitRenderer.mask) : nil
-                    let portrait = depthMask.flatMap { PortraitRenderer.render(fullData, mask: $0) }
+                    let portrait = depthMask.flatMap { PortraitRenderer.render(fullData, mask: $0, preserveHDR: context.request.preserveHDR) }
                     var result = StillComposer.compose(imageData: developed ?? fullData, request: context.request)
                     if let portrait {
                         let bokeh = StillComposer.compose(imageData: portrait, request: context.request)
@@ -3255,6 +3277,9 @@ final class CameraStore {
                 }
             }.value
             guard let self else { return }
+            if context.expectsRaw, !context.natural, prepared.rawURL == nil {
+                showToast("RAW wasn’t available for this capture. The processed photo was kept.")
+            }
             if context.natural, !prepared.naturalDeveloped { showToast("Natural RAW development wasn’t available; the standard photo and any RAW were kept.") }
             #if DEBUG
             if prepared.portraitRendered { verifiedDepthIDs.insert(id) }
@@ -3448,10 +3473,14 @@ final class CameraStore {
             try? await Task.sleep(for: .seconds(3))
             guard let self, caps.hasCamera else { NSLog("PHOTO_BURST_VERIFY FAIL no camera"); return }
             selectMode(.photo)
+            setPhotoFeature(.standard)
+            focusPullLensEnabled = false
             rawEnabled = false; format = .heif; flash = .off; saveToPhotos = false
             engine.setTorch(enabled: false)
+            try? await Task.sleep(for: .seconds(1))
             for styled in [false, true] {
-                look = styled ? (FilmLook.lineup.first(where: { $0.id != "standard" }) ?? .standard) : .standard
+                look = styled ? (FilmLook.lineup.first(where: { $0.id == "night35" }) ?? .standard) : .standard
+                try? await Task.sleep(for: .milliseconds(350))
                 var ids: [UUID] = []
                 let begin = ProcessInfo.processInfo.systemUptime
                 for _ in 0..<5 {

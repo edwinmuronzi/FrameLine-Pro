@@ -29,6 +29,31 @@ nonisolated enum ViewfinderShortcut: String, CaseIterable, Identifiable {
     }
 }
 
+nonisolated enum PhotoToolbarControl: String, CaseIterable, Identifiable {
+    case rangefinder, aspect, raw, flash, manual, histogram, looks, gallery, hidden
+    static let defaults: [Self] = [.rangefinder, .aspect, .raw, .flash, .manual]
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .rangefinder: "Rangefinder"
+        case .aspect: "Aspect ratio"
+        case .raw: "RAW"
+        case .flash: "Flash"
+        case .manual: "Manual controls"
+        case .histogram: "Histogram"
+        case .looks: "Looks & LUTs"
+        case .gallery: "Gallery"
+        case .hidden: "Empty"
+        }
+    }
+
+    static func load() -> [Self] {
+        let saved = UserDefaults.standard.stringArray(forKey: "frameline.photoToolbar.v1")?.compactMap(Self.init(rawValue:))
+        guard let saved, saved.count == defaults.count else { return defaults }
+        return saved
+    }
+}
+
 struct ShortcutSettings: View {
     @Bindable var store: CameraStore
     var body: some View {
@@ -42,6 +67,28 @@ struct ShortcutSettings: View {
                     })) { ForEach(ViewfinderShortcut.allCases) { Text($0.title).tag($0) } }
                 }
                 Button("Restore defaults") { store.viewfinderShortcuts = [.timelapse, .magnify, .timer] }
+            }
+            Section {
+                ForEach(PhotoToolbarControl.defaults.indices, id: \.self) { index in
+                    Picker(["Far left", "Left", "Center", "Right", "Far right"][index], selection: Binding(
+                        get: { store.photoToolbar[index] },
+                        set: { value in
+                            var controls = store.photoToolbar
+                            if value != .hidden, let previous = controls.firstIndex(of: value) {
+                                controls[previous] = controls[index]
+                            }
+                            controls[index] = value
+                            store.photoToolbar = controls
+                        }
+                    )) {
+                        ForEach(PhotoToolbarControl.allCases) { Text($0.title).tag($0) }
+                    }
+                }
+                Button("Restore photo controls") { store.photoToolbar = PhotoToolbarControl.defaults }
+            } header: {
+                Text("Photo & Rangefinder bottom row")
+            } footer: {
+                Text("Move the controls you use most or leave a position empty.")
             }
             Section("What they do") {
                 ForEach(ViewfinderShortcut.allCases) { shortcut in

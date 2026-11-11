@@ -42,14 +42,21 @@ When available, this section will contain the real TestFlight/App Store link. Se
 
 ### Photo capture: choose the result you want
 
-Open **Fn → Shooting tools → Photo capture**. Standard, Natural RAW, Live Photo and depth portrait are alternative capture modes, not switches that promise every combination at once.
+Open **Fn → Shooting tools → Photo capture**. The available combinations depend on the active lens and camera configuration.
 
 - **Standard:** the quickest everyday HEIF/JPEG path, with optional RAW and looks.
 - **Natural RAW:** develops a single native Bayer RAW with sharpening, noise reduction and local tone mapping turned down, retaining the DNG. This gives you more control over texture. It can be grainier, and bright skies or dark scenes may be harder to recover. It uses a supported physical rear camera; it is not ProRAW-based HEIF+ and does not claim to reproduce another app’s proprietary processing. The live preview is a framing/color preview, not an exact preview of the later RAW development.
 - **Live Photo:** keeps a short moment of movement with the still and saves one paired Live Photo to Photos. It preserves the original full frame and metadata; baked looks/LUTs and framing crops are excluded. In-app sharing of the motion component sends a separate movie. Microphone availability and permissions affect sound.
 - **Depth portrait:** uses a supported camera’s distance map to soften the background while preserving the original. It is a rendered image, not Apple’s editable Portrait mode. Hair, glass and complex edges can be imperfect. An unsupported lens retains the original and explains what happened.
 
+- **Keep HDR highlights:** preserves camera-delivered HDR when cropping or baking a photo look, including compatible rendered portrait copies. A RAW DNG can accompany the processed photo when the camera supports the pairing.
+- **Depth companions:** Live Photo can keep depth and HDR together on supported camera setups. The motion pair uses the original still. Switch Depth and Live Photo off to keep a RAW DNG with a processed HDR still.
+
 The format pill identifies Natural RAW, Live Photo or Depth when active. Supported RAW, Live and depth combinations depend on the actual lens, format and capture session. For the fastest repeated stills, use Standard HEIF with these extras off.
+
+### Film texture in photos
+
+Use the Quality dial to change grain. The photo grain is strongest in midtones and tapers toward black and white. With Glow enabled, **35mm Night** adds a warm rim around bright light sources.
 
 ### Focus pulls without leaving the viewfinder
 
@@ -104,7 +111,7 @@ The photo editor caches a decoded preview and renders slider changes directly wi
 
 ### Your shortcuts, within reach
 
-Use **Fn → Shooting tools → Viewfinder shortcuts** to choose the three buttons above the zoom ruler. Available choices include countdown, timelapse, magnifier, histogram, looks, manual controls, gallery and focus pulls. Picking a duplicate swaps its old position so the row stays clean. Reset restores the original arrangement.
+Use **Fn → Shooting tools → Viewfinder shortcuts** to choose the three buttons above the zoom ruler. Available choices include countdown, timelapse, magnifier, histogram, looks, manual controls, gallery and focus pulls. Picking a duplicate swaps its old position so the row stays clean. Use the **Photo & Rangefinder bottom row** section to arrange its five controls or leave positions empty. Each row has a reset.
 
 ### Lock Screen camera
 
@@ -235,7 +242,7 @@ The marketing scenes are **AI-generated illustrative photography**, not evidence
 
 ## Marketing kit
 
-Ten coordinated **1320×2868, opaque PNG** images are in [Marketing/AppStore](Marketing/AppStore), covering the main camera, photo, video, Dual Shot, looks/LUTs, rangefinder, manual controls, scopes, shooting tools and the overall experience.
+The listing kit includes ten **1320×2868 iPhone** images and three **2064×2752 iPad** images. See the [marketing overview](Marketing/Overview.jpg), [onboarding preview](Marketing/Onboarding.jpg), [iPhone set](Marketing/AppStore), and [iPad set](Marketing/AppStore-iPad).
 
 The set is designed for the iPhone App Store screenshot slot; confirm [Apple’s current screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/) and your actual supported devices before submission. It is a prepared marketing set, not an App Store approval or a published listing. See [the marketing notes](Marketing/README.md) for source, copy and regeneration details.
 

@@ -58,9 +58,12 @@ nonisolated enum PortraitRenderer {
         let blurred = image.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: ["inputRadius": radius]).cropped(to: image.extent)
         return image.applyingFilter("CIBlendWithMask", parameters: ["inputBackgroundImage": blurred, "inputMaskImage": aligned]).cropped(to: image.extent)
     }
-    static func render(_ data: Data, mask: DepthMask) -> Data? {
+    static func render(_ data: Data, mask: DepthMask, preserveHDR: Bool = false) -> Data? {
         guard let image = CIImage(data: data, options: [.applyOrientationProperty: true]), let map = mask.image else { return nil }
-        return PhotoDeveloper.encode(adjust(image, mask: map, amount: 0.375, separation: 0.5))
+        let base = adjust(image, mask: map, amount: 0.375, separation: 0.5)
+        if preserveHDR, let hdr = HDRPhoto.expanded(data),
+           let encoded = HDRPhoto.encode(sdr: base, hdr: adjust(hdr, mask: map, amount: 0.375, separation: 0.5)) { return encoded }
+        return PhotoDeveloper.encode(base)
     }
 }
 
@@ -74,11 +77,14 @@ struct PhotoFeaturesView: View {
                 if store.naturalPhoto && !store.caps.supportsNativeRaw { Text("Choose a rear lens with native RAW support. The app won’t pretend a processed photo is RAW.").font(.caption).foregroundStyle(Theme.gold) }
             }
             Section("Motion and depth") {
-                Toggle("Live Photo", isOn: Binding(get: { store.livePhoto }, set: { store.setPhotoFeature($0 ? .live : .standard) }))
+                Toggle("Live Photo", isOn: Binding(get: { store.livePhoto }, set: { if $0 { store.setPhotoFeature(.live) } else { store.disableLiveCapture() } }))
                 Text("Keep a short moment of movement with your still photo. Saves one Live Photo to Photos. Uses the full original frame without baked looks or crops.").font(.caption)
-                Toggle("Depth portrait", isOn: Binding(get: { store.depthPortrait }, set: { store.setPhotoFeature($0 ? .portrait : .standard) }))
-                Text("Use the camera’s depth map to soften the background. Your original and depth map stay in the gallery. Open Develop photo to change background blur and subject separation later. Requires depth support; exported images are rendered portraits.").font(.caption)
-                Text("These modes are alternatives. Live and depth availability depends on the current lens and camera configuration.").font(.caption).foregroundStyle(.secondary)
+                Toggle("Depth portrait", isOn: Binding(get: { store.depthPortrait }, set: { store.setDepthCapture($0) }))
+                Text("Keep the camera’s depth map and a soft-background portrait. Live Photo can keep depth where both are supported. The motion pair uses the original still. Turn Depth off to shoot a RAW original.").font(.caption)
+            }
+            Section("Highlights") {
+                Toggle("Keep HDR highlights", isOn: $store.captureHDRHighlights)
+                Text("Keep extra brightness in lights and skies when the camera delivers an HDR still. Applies to supported crops, baked looks and portrait copies. RAW originals stay separate.").font(.caption)
             }
             Section("Slow shutter") {
                 Picker("Effect", selection: Binding(get: { store.motionExposure }, set: { store.setMotionExposure($0) })) {
@@ -110,15 +116,35 @@ extension CameraStore {
         motionExposure = effect
     }
 
+    func disableLiveCapture() {
+        guard !isRecording, pendingPhotoCount == 0 else { return }
+        livePhoto = false
+        engine.configurePhotoCompanions(live: false, depth: depthPortrait, natural: naturalPhoto)
+    }
+
+    func setDepthCapture(_ enabled: Bool) {
+        guard !isRecording, pendingPhotoCount == 0 else { return }
+        if mode == .video { selectMode(.photo) }
+        if enabled {
+            motionExposure = .off
+            naturalPhoto = false
+            rawEnabled = false
+            focusPullLensEnabled = false
+        }
+        depthPortrait = enabled
+        engine.configurePhotoCompanions(live: livePhoto, depth: depthPortrait, natural: naturalPhoto)
+    }
+
     func setPhotoFeature(_ feature: PhotoFeature) {
         guard !isRecording, pendingPhotoCount == 0 else { showToast("Finish the current capture first."); return }
         if mode == .video { selectMode(.photo) }
         motionExposure = .off
-        naturalPhoto = feature == .natural; livePhoto = feature == .live; depthPortrait = feature == .portrait
+        let keepDepth = feature == .live && depthPortrait
+        naturalPhoto = feature == .natural; livePhoto = feature == .live; depthPortrait = feature == .portrait || keepDepth
         if naturalPhoto { focusPullLensEnabled = true }
         if depthPortrait { rawEnabled = false; focusPullLensEnabled = false }
         if livePhoto {
-            rawEnabled = false; naturalPhoto = false; depthPortrait = false
+            rawEnabled = false; naturalPhoto = false
             look = .standard; bakeLUT = false; saveTarget = .full; aspect = .sensor
         }
         engine.configurePhotoCompanions(live: livePhoto, depth: depthPortrait, natural: naturalPhoto)

@@ -3074,6 +3074,13 @@ struct ToolBar: View {
                     }
                     manualButton.frame(width: 44)
                 }
+            } else if store.mode != .video {
+                HStack(spacing: 0) {
+                    ForEach(store.photoToolbar.indices, id: \.self) { index in
+                        photoControl(store.photoToolbar[index])
+                            .frame(maxWidth: .infinity)
+                    }
+                }
             } else {
                 // Five equal cells, with RAW always on the shutter's axis.
                 // Each cell expands independently; conditional groups and
@@ -3096,6 +3103,20 @@ struct ToolBar: View {
         .padding(.horizontal, 8)
         .animation(.easeInOut(duration: 0.22), value: store.isRecording)
         .shadow(color: .black.opacity(0.55), radius: 3)
+    }
+
+    @ViewBuilder private func photoControl(_ control: PhotoToolbarControl) -> some View {
+        switch control {
+        case .rangefinder: cropButton
+        case .aspect: aspectButton
+        case .raw: rawButton
+        case .flash: flashButton
+        case .manual: manualButton
+        case .histogram: CustomShortcutButton(store: store, shortcut: .histogram)
+        case .looks: CustomShortcutButton(store: store, shortcut: .looks)
+        case .gallery: CustomShortcutButton(store: store, shortcut: .gallery)
+        case .hidden: Color.clear.accessibilityHidden(true)
+        }
     }
 
     private var cropButton: some View {
@@ -3149,6 +3170,7 @@ struct ToolBar: View {
         }
         .buttonStyle(UprightStyle())
         .accessibilityLabel("RAW")
+        .disabled(store.mode != .video && (store.livePhoto || store.depthPortrait))
     }
 
     private var flashButton: some View {

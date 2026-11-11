@@ -27,6 +27,8 @@ nonisolated struct StyleParams: Sendable, Equatable {
     var highlightAmount: Float = 0
     var grain: Float = 0
     var grainSize: Float = 1
+    var refinedPhotoTexture = false
+    var halation: Float = 0
     var vignette: Float = 0
     var glow: Float = 0
     var soften: Float = 0
@@ -69,6 +71,7 @@ nonisolated struct StyleParams: Sendable, Equatable {
             || grain > 0.001
             || vignette > 0.001
             || glow > 0.001
+            || halation > 0.001
             || soften > 0.001
             || sharpen > 0.001
     }
@@ -307,6 +310,10 @@ nonisolated enum StyleGrade {
             result = bloom.outputImage?.cropped(to: extent) ?? result
         }
 
+        if style.halation > 0.001 {
+            result = highlightHalation(result, strength: style.halation)
+        }
+
         if style.vignette > 0.001 {
             let vignette = CIFilter.vignette()
             vignette.inputImage = result
@@ -319,7 +326,8 @@ nonisolated enum StyleGrade {
             result = addGrain(
                 to: result,
                 amount: style.grain,
-                size: style.grainSize
+                size: style.grainSize,
+                refined: style.refinedPhotoTexture
             )
         }
 
@@ -391,12 +399,54 @@ nonisolated enum StyleGrade {
         return masked.outputImage?.cropped(to: base.extent) ?? base
     }
 
+    private final class PhotoKernels: @unchecked Sendable {
+        let grain = CIColorKernel(source: """
+            kernel vec4 photoGrain(__sample base, __sample noise, float amount) {
+                vec4 pixel = unpremultiply(base);
+                float light = clamp(dot(pixel.rgb, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+                float response = smoothstep(0.02, 0.26, light) * (1.0 - smoothstep(0.40, 1.0, light));
+                float delta = (noise.r - 0.5) * min(0.20, amount * 0.28) * response;
+                return premultiply(vec4(pixel.rgb + vec3(delta), pixel.a));
+            }
+            """)
+        let highlights = CIColorKernel(source: """
+            kernel vec4 halationHighlights(__sample base) {
+                vec3 rgb = max(unpremultiply(base).rgb, vec3(0.0));
+                float light = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+                float signal = smoothstep(0.70, 1.05, light);
+                return vec4(vec3(signal), 1.0);
+            }
+            """)
+        let halo = CIColorKernel(source: """
+            kernel vec4 halationComposite(__sample base, __sample spread, __sample core, float amount) {
+                vec4 pixel = unpremultiply(base);
+                float rim = max(0.0, spread.r - core.r);
+                return premultiply(vec4(pixel.rgb + vec3(1.0, 0.25, 0.10) * rim * amount, pixel.a));
+            }
+            """)
+    }
+    private static let photoKernels = PhotoKernels()
+
+    private static func highlightHalation(_ image: CIImage, strength: Float) -> CIImage {
+        let extent = image.extent
+        let scale = min(1, 720 / max(extent.width, extent.height))
+        let reduced = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        guard let highlights = photoKernels.highlights?.apply(extent: reduced.extent, arguments: [reduced]) else { return image }
+        let radius = max(1, max(reduced.extent.width, reduced.extent.height) / 160)
+        let spread = highlights.clampedToExtent().applyingGaussianBlur(sigma: radius).cropped(to: reduced.extent)
+        let restore = CGAffineTransform(scaleX: 1 / scale, y: 1 / scale)
+        return photoKernels.halo?.apply(extent: extent, arguments: [
+            image, spread.transformed(by: restore), highlights.transformed(by: restore), strength
+        ]) ?? image
+    }
+
     // MARK: - Film grain
 
     private static func addGrain(
         to image: CIImage,
         amount: Float,
-        size: Float
+        size: Float,
+        refined: Bool
     ) -> CIImage {
         let extent = image.extent
 
@@ -428,6 +478,9 @@ nonisolated enum StyleGrade {
         }
 
         noise = tiled.cropped(to: extent)
+        if refined, let output = photoKernels.grain?.apply(extent: extent, arguments: [image, noise, strength]) {
+            return output
+        }
 
         // Convert the texture to neutral monochrome.
         let third: CGFloat = 1.0 / 3.0
@@ -685,6 +738,7 @@ nonisolated enum StillComposer {
         var cube: Data?
         var cubeSize: Int = 0
         var lutIntensity: Float = 1
+        var preserveHDR = false
 
         var grades: Bool {
             style.isIdentity == false || (cube != nil && cubeSize > 1)
@@ -722,12 +776,14 @@ nonisolated enum StillComposer {
         let target = request.saveTarget
         let graded = request.grades
 
+        let expanded = request.preserveHDR && (graded || (target != "FULL" && !coversFrame))
+            ? HDRPhoto.expanded(imageData) : nil
         let needsOriginalCrop = target != "FULL"
 
         let originalCrop: Data? = needsOriginalCrop
             ? (coversFrame
                 ? imageData
-                : jpeg(
+                : expanded.flatMap { HDRPhoto.encode(sdr: image.cropped(to: rect), hdr: $0.cropped(to: rect)) } ?? jpeg(
                     image.cropped(to: rect),
                     space: space,
                     context: managed
@@ -753,25 +809,28 @@ nonisolated enum StillComposer {
                 style: request.style
             )
 
+            func encodeGrade(_ rect: CGRect) -> Data? {
+                if let expanded {
+                    func applyGrade(_ source: CIImage) -> CIImage {
+                        StyleGrade.grade(source, cube: request.cube, cubeSize: request.cubeSize,
+                            intensity: request.lutIntensity, style: request.style).cropped(to: rect)
+                    }
+                    if let hdr = HDRPhoto.encode(sdr: applyGrade(image), hdr: applyGrade(expanded)) { return hdr }
+                }
+                return heic(look.cropped(to: rect), space: space, context: raw)
+            }
+
             let wantsFull = target != "FRAME" || coversFrame
             let wantsCrop = target != "FULL"
 
             if wantsFull {
-                gradedFull = heic(
-                    look.cropped(to: flat.extent),
-                    space: space,
-                    context: raw
-                )
+                gradedFull = encodeGrade(flat.extent)
             }
 
             if wantsCrop {
                 gradedCrop = coversFrame
                     ? gradedFull
-                    : heic(
-                        look.cropped(to: rect),
-                        space: space,
-                        context: raw
-                    )
+                    : encodeGrade(rect)
             }
         }
 
