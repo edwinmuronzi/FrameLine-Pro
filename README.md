@@ -159,7 +159,7 @@ HEIF Max, RAW, flash, low-light processing and bracketing take longer than ordin
 - Microphone selection, audio level/clipping indication and headphone monitoring.
 - Torch control on supported cameras, including during recording.
 - Clean recording controls, clip counters and running timecode.
-- **9:16 in ordinary Video:** choose 9:16 with the aspect control, then enable **Fn → Shooting tools → Framing → Show reel safe zones**. The clear cutout marks the safer area for faces/text; shaded areas leave room for captions and interface controls. Choose Reel captions or Center action. The saved movie uses the crop; the guide itself is never recorded. These guides are approximate, not platform-exact templates.
+- **9:16 in ordinary Video:** choose 9:16 with the aspect control, then enable **Fn → Shooting tools → Safe zones & anamorphic → Show reel safe zones**. The clear cutout marks the safer area for faces/text; shaded areas leave room for captions and interface controls. Choose Reel captions or Center action. The saved movie uses the crop; the guide itself is never recorded. These guides are approximate, not platform-exact templates.
 
 ### Slow shutter — motion blur and light trails
 
