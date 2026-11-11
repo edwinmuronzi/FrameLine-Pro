@@ -12,6 +12,10 @@ struct ContentView: View {
             if let flag = ProcessInfo.processInfo.arguments.firstIndex(of: "--capture-story"), ProcessInfo.processInfo.arguments.count > flag + 1 {
                 let index = min(FeatureStory.all.count - 1, max(0, (Int(ProcessInfo.processInfo.arguments[flag + 1]) ?? 1) - 1))
                 CameraShowcase(story: FeatureStory.all[index])
+            } else if ProcessInfo.processInfo.arguments.contains("--verify-reel-export") {
+                ReelMovieVerification()
+            } else if ProcessInfo.processInfo.arguments.contains("--verify-reel-geometry") {
+                ReelGeometryVerification()
             } else if ProcessInfo.processInfo.arguments.contains("--export-marketing") {
                 MarketingExportHost()
             } else if ProcessInfo.processInfo.arguments.contains("--show-gallery") {

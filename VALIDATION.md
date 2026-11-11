@@ -1,4 +1,17 @@
-# StillarcCamera 1.2 validation
+# Stillarc Camera validation
+
+## 1.3.2 — preset capture, LUT Off and ordinary-video safe zones
+
+The 1.3.1 crash reports from the 17 Pro show an Objective-C exception in AVCapturePhotoOutput submission. Requests now synchronize the output maximum with the active lens format and bound per-shot quality to the output limit. A narrow Objective-C boundary reports rejected requests and releases the pending delegate/context instead of terminating the app. The crash report did not include the original exception reason; do not claim the precise original invalid argument was established.
+
+On the **black iPhone 16 Pro**, all **12 photo capture checks passed**, including both affected presets transferred temporarily from the 17 Pro, HEIF, RAW, depth, Live Photo, natural capture and the available lens stops. No photo request was rejected. Temporary fixture presets were deleted after reading and were not added to the phone's preset library. The tests did not send capture media to Photos. A separate styled-photo pipeline check passed isolation, graded full/crop pair, thumbnail bounds, chronological ordering and pending-context cleanup. LUT Off passed removal of the selected LUT, preview and bake eligibility, plus closing the pill panel.
+
+Four private synthetic movie checks passed on the 16 Pro: portrait and landscape sources through both aspect export and the actual live graded writer. All yielded exact 9:16 displayed dimensions (360×640 or 270×480) and readable files. These small fixtures validate geometry and completion, not sustained full-resolution recording cadence. They exposed a two-pixel minimum incorrectly applied to zero crop origins in the fallback exporter; the corrected paths passed the stricter ratio test. Fourteen geometry/persistence checks passed on the simulator and 16 Pro.
+
+Portrait and sideways-phone safe-zone layouts were visually inspected using the app's native showcase. The 9:16 crop and shaded caption/action cutouts work in ordinary video; Dual Shot keeps its existing framing and gains the same shaded safe-zone treatment. Guides remain SwiftUI overlays, never image-processing stages. Social layouts are approximate. [Reports and screenshots](Validation/1.3.2) are retained. These checks do not automate every touch interaction or establish zero heat/lag.
+
+The normal Release archive built with diagnostics excluded. Strict signature verification with keychain access passed (valid on disk and designated requirement satisfied); the sandbox-only trust check initially failed, and installation was deferred until the read-only signing check resolved it. The final build was installed on both phones and launched normally on the 16 Pro; iOS blocked the 17 Pro launch because it was locked.
+
 
 The signed Release archive, the Debug simulator build and both embedded camera extensions build successfully with the installed Xcode toolchain. The final phone installation uses Release optimization without the Debug diagnostic flag. Minimum deployment remains iOS 26.
 

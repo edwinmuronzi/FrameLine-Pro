@@ -50,6 +50,12 @@ struct CameraShowcase: View {
         s.selectedCodec = RecordingCodec(rawValue: "hvc1")
         s.storageTotalBytes = 256_000_000_000
         s.storageFreeBytes = 128_000_000_000
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--show-reel-safezones") {
+            s.mode = .video; s.aspect = .reel; s.framingOptions.safeZones = true
+            if ProcessInfo.processInfo.arguments.contains("--landscape-reel") { s.captureAngle = 0 }
+        }
+        #endif
         s.dualShot = story.id == 3
         s.showManual = story.id == 6
         if story.id == 12 {

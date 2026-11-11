@@ -1,0 +1,33 @@
+{
+  "passed": true,
+  "exports": [
+    {
+      "pipeline": "aspect export",
+      "landscapeSource": false,
+      "width": 360,
+      "frames": 32,
+      "height": 640
+    },
+    {
+      "width": 270,
+      "pipeline": "aspect export",
+      "landscapeSource": true,
+      "frames": 32,
+      "height": 480
+    },
+    {
+      "pipeline": "live graded writer",
+      "height": 640,
+      "width": 360,
+      "landscapeSource": false,
+      "frames": 32
+    },
+    {
+      "landscapeSource": true,
+      "pipeline": "live graded writer",
+      "height": 480,
+      "frames": 32,
+      "width": 270
+    }
+  ]
+}

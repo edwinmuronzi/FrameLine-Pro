@@ -59,6 +59,7 @@ nonisolated enum FrameAspect: String, CaseIterable, Identifiable, Codable {
     case fourFive
     case square
     case widescreen
+    case reel
     case cinema
 
     var id: String { rawValue }
@@ -69,6 +70,7 @@ nonisolated enum FrameAspect: String, CaseIterable, Identifiable, Codable {
         case .fourFive: "4:5"
         case .square: "1:1"
         case .widescreen: "16:9"
+        case .reel: "9:16"
         case .cinema: "2.39:1"
         }
     }
@@ -80,6 +82,7 @@ nonisolated enum FrameAspect: String, CaseIterable, Identifiable, Codable {
         case .fourFive: 4.0 / 5.0
         case .square: 1
         case .widescreen: 16.0 / 9.0
+        case .reel: 9.0 / 16.0
         case .cinema: 2.39
         }
     }
@@ -388,6 +391,19 @@ nonisolated struct FrameMath {
         width = min(width, 1)
         height = min(height, 1)
         return CGRect(x: (1 - width) / 2, y: (1 - height) / 2, width: width, height: height)
+    }
+}
+
+/// Viewfinder and movie export share the same crop, including when the phone turns sideways.
+nonisolated enum VideoFrameGeometry {
+    static func normalizedRect(aspect: FrameAspect, viewRatio: CGFloat, landscape: Bool) -> CGRect {
+        FrameMath.normalizedRect(focalScale:1,aspect:aspect == .reel && landscape ? .widescreen : aspect,sourceRatio:viewRatio)
+    }
+    static func captureCrop(aspect: FrameAspect, viewRatio: CGFloat, landscape: Bool) -> (rect: CGRect, ratio: Double) {
+        let rect = normalizedRect(aspect:aspect,viewRatio:viewRatio,landscape:landscape)
+        return landscape
+            ? (CGRect(x:rect.minY,y:rect.minX,width:rect.height,height:rect.width),Double(1/viewRatio))
+            : (rect,Double(viewRatio))
     }
 }
 

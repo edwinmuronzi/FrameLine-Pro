@@ -202,7 +202,7 @@ private struct FramingToolsView: View {
                     ForEach(SafeZoneStyle.allCases) { Text($0.rawValue).tag($0) }
                 }
             } footer: {
-                Text("Dual Shot guides keep important faces and text clear of common caption and interface areas. They are visual guides, not platform-exact templates, and are never baked into video.")
+                Text("Use the 9:16 crop in ordinary Video, or enable Dual Shot. Shaded areas may be covered by captions and app controls; keep faces and text inside the clear cutout. They are visual guides, not platform-exact templates, and are never baked into video.")
             }
             Section {
                 Picker("Anamorphic lens", selection: $store.framingOptions.anamorphic) {
@@ -261,18 +261,38 @@ struct ReelAssistOverlay: View {
     let style: SafeZoneStyle
     let subject: CGRect?
     let lost: Bool
+    var ordinaryReel = false
+    var landscape = false
+    var captureAngle = 90.0
     var body: some View {
         GeometryReader { geo in
-            let width = min(geo.size.width, geo.size.height * 9 / 16)
-            let height = width * 16 / 9
-            let left = (geo.size.width - width) / 2
-            let top = (geo.size.height - height) / 2
-            if safeZones {
-                let rect = style.rect
-                Rectangle()
-                    .stroke(.white.opacity(0.65), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
-                    .frame(width: width * rect.width, height: height * rect.height)
-                    .position(x: left + width * rect.midX, y: top + height * rect.midY)
+            let normalized = ordinaryReel
+                ? VideoFrameGeometry.normalizedRect(aspect:.reel,viewRatio:geo.size.width / max(1,geo.size.height),landscape:landscape)
+                : FrameMath.normalizedRect(focalScale:1,aspect:.reel,sourceRatio:geo.size.width / max(1,geo.size.height))
+            let width = geo.size.width * normalized.width
+            let height = geo.size.height * normalized.height
+            let left = geo.size.width * normalized.minX
+            let top = geo.size.height * normalized.minY
+            let frame = CGRect(x:left,y:top,width:width,height:height)
+            Canvas { context,size in
+                if ordinaryReel {
+                    var outside = Path(CGRect(origin:.zero,size:size)); outside.addRect(frame)
+                    context.fill(outside,with:.color(.black.opacity(0.42)),style:FillStyle(eoFill:true))
+                    context.stroke(Path(frame.insetBy(dx:0.5,dy:0.5)),with:.color(.white.opacity(0.7)),lineWidth:1)
+                }
+                if safeZones {
+                    let source = style.rect
+                    let rect: CGRect = {
+                        guard ordinaryReel && landscape else { return source }
+                        return captureAngle == 0
+                            ? CGRect(x:source.minY,y:1-source.maxX,width:source.height,height:source.width)
+                            : CGRect(x:1-source.maxY,y:source.minX,width:source.height,height:source.width)
+                    }()
+                    let safe = CGRect(x:left+width*rect.minX,y:top+height*rect.minY,width:width*rect.width,height:height*rect.height)
+                    var shaded = Path(frame); shaded.addRoundedRect(in:safe,cornerSize:CGSize(width:8,height:8))
+                    context.fill(shaded,with:.color(.black.opacity(0.38)),style:FillStyle(eoFill:true))
+                    context.stroke(Path(roundedRect:safe,cornerRadius:8),with:.color(.white.opacity(0.7)),style:StrokeStyle(lineWidth:1,dash:[5,5]))
+                }
             }
             if lost {
                 Text("Tracking lost · tap subject to resume")

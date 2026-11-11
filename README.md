@@ -159,6 +159,7 @@ HEIF Max, RAW, flash, low-light processing and bracketing take longer than ordin
 - Microphone selection, audio level/clipping indication and headphone monitoring.
 - Torch control on supported cameras, including during recording.
 - Clean recording controls, clip counters and running timecode.
+- **9:16 in ordinary Video:** choose 9:16 with the aspect control, then enable **Fn → Shooting tools → Framing → Show reel safe zones**. The clear cutout marks the safer area for faces/text; shaded areas leave room for captions and interface controls. Choose Reel captions or Center action. The saved movie uses the crop; the guide itself is never recorded. These guides are approximate, not platform-exact templates.
 
 ### Slow shutter — motion blur and light trails
 
@@ -176,7 +177,7 @@ Record **landscape 16:9 and vertical 9:16 simultaneously from one camera source*
 - A camera style is baked into the pair. A selected LUT is baked only when its bake control is enabled.
 - No style and no baked LUT means a plain pair.
 - Optional subject tracking moves the reel crop independently; the landscape framing stays centered.
-- Optional reel safe-zone guides help leave room for captions. Guides and tracking boxes do not appear in saved videos.
+- Optional shaded reel safe-zone cutouts help leave room for captions. Guides and tracking boxes do not appear in saved videos.
 - Both outputs are committed together to Photos after successful finalization. Incomplete pairs are not deliberately published.
 
 Dual Shot is two crops of one source, not two independently pointed cameras. It does not create four copies, and it does not deliver two 4K files. Available framing is limited by what the camera can see.

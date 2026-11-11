@@ -922,6 +922,7 @@ final class CameraStore {
             selectMode(.photo)
             engine.verifyMotionExposure()
         }
+        if ProcessInfo.processInfo.arguments.contains("--verify-preset-capture") { verifyPresetCapture() }
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-pipeline") { verifyPhotoPipeline() }
         if ProcessInfo.processInfo.arguments.contains("--verify-single-recording") { verifySingleRecording() }
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-burst") { verifyPhotoBurst() }
@@ -1816,24 +1817,9 @@ final class CameraStore {
             var cropViewRatio = shownRatio
 
             if aspect != .sensor {
-                let portrait = FrameMath.normalizedRect(
-                    focalScale: 1,
-                    aspect: aspect,
-                    sourceRatio: CGFloat(shownRatio)
-                )
-
-                if isLandscape {
-                    videoCrop = CGRect(
-                        x: portrait.minY,
-                        y: portrait.minX,
-                        width: portrait.height,
-                        height: portrait.width
-                    )
-
-                    cropViewRatio = 1 / shownRatio
-                } else {
-                    videoCrop = portrait
-                }
+                let crop = VideoFrameGeometry.captureCrop(aspect:aspect,viewRatio:CGFloat(shownRatio),landscape:isLandscape)
+                videoCrop = crop.rect
+                cropViewRatio = crop.ratio
             }
 
             engine.setVideoCrop(videoCrop, viewRatio: cropViewRatio)
@@ -2398,7 +2384,9 @@ final class CameraStore {
 
     // Takes the LUT, the style and the look details off the picture.
     func clearLook() {
+        selectedLUT = nil
         monitorLUT = false
+        showLUTPanel = false
         look = .standard
 
         showToast("Look off.")
@@ -3552,6 +3540,49 @@ final class CameraStore {
                 for item in completed { delete(item) }
             }
             NSLog("PHOTO_BURST_VERIFY COMPLETE no test shots saved to Photos")
+        }
+    }
+
+    private func verifyPresetCapture() {
+        Task { @MainActor in
+            let original = currentShootingPreset(named:"Restore")
+            let originalDials = lookDials
+            let selection = selectedPresetID
+            let priorIdle = UIApplication.shared.isIdleTimerDisabled
+            UIApplication.shared.isIdleTimerDisabled = true
+            defer { applyShootingPreset(original); lookDials = originalDials; selectedPresetID = selection; UIApplication.shared.isIdleTimerDisabled = priorIdle }
+            try? await Task.sleep(for:.seconds(2))
+            var photo = original; photo.mode = CaptureMode.photo.rawValue; photo.raw = false; photo.livePhoto = false; photo.depthPortrait = false; photo.naturalPhoto = false; photo.flash = FlashChoice.off.rawValue; photo.focusLens = false; photo.isoAuto = true; photo.shutterAuto = true
+            var raw = photo; raw.raw = true
+            var depth = photo; depth.depthPortrait = true
+            var live = photo; live.livePhoto = true
+            var native = photo; native.naturalPhoto = true
+            var checks = shootingPresets.filter { $0.mode != CaptureMode.video.rawValue }
+            if ProcessInfo.processInfo.arguments.contains("--use-preset-fixtures") {
+                let fixture = FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("preset-regression-fixtures.json")
+                if let data = try? Data(contentsOf:fixture), let presets = try? JSONDecoder().decode([ShootingPreset].self,from:data) { checks += presets }
+                try? FileManager.default.removeItem(at:fixture)
+            }
+            checks += [photo,raw,depth,live,native]
+            for lens in lenses {
+                var lensPreset = photo; lensPreset.lens = lens.zoom; lensPreset.zoom = 0; lensPreset.format = PhotoFormat.heifMax.rawValue
+                checks.append(lensPreset)
+            }
+            var passed = 0
+            for (index,preset) in checks.enumerated() {
+                applyShootingPreset(preset)
+                try? await Task.sleep(for:.milliseconds(900))
+                let ok = await engine.verifyPresetPhoto(raw:rawEnabled || naturalPhoto,flash:flash,format:format,nativeRaw:naturalPhoto)
+                if ok { passed += 1 }
+                NSLog("PRESET_CAPTURE_VERIFY index=%d passed=%d",index,ok ? 1 : 0)
+            }
+            selectedLUT = luts.first; monitorLUT = true; showLUTPanel = true
+            clearLook()
+            let off = selectedLUT == nil && !monitorLUT && !isLUTBaking && !showLUTPanel
+            NSLog("PRESET_CAPTURE_VERIFY COMPLETE passed=%d total=%d lutOff=%d",passed,checks.count,off ? 1 : 0)
+            let report: [String:Any] = ["passed":passed == checks.count && off,"captures":passed,"requested":checks.count,"lutOff":off]
+            let file = FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("preset-capture-verification.json")
+            if let data = try? JSONSerialization.data(withJSONObject:report,options:.prettyPrinted) { try? data.write(to:file,options:.atomic) }
         }
     }
 

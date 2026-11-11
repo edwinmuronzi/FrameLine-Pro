@@ -258,7 +258,7 @@ struct CameraScreen: View {
                 }
 
                 if store.showsFrameMask, store.cleanFeed == false,
-                   !(store.mode == .video && store.dualShot) {
+                   !(store.mode == .video && (store.dualShot || store.aspect == .reel)) {
                     FrameOverlay(
                         scale: store.frameScale,
                         aspect: store.aspect,
@@ -276,9 +276,10 @@ struct CameraScreen: View {
                         .accessibilityLabel("Dual Shot framing: landscape 16 by 9 and vertical reel 9 by 16")
                 }
 
-                if store.mode == .video, store.dualShot, !store.cleanFeed {
+                if store.mode == .video, (store.dualShot || store.aspect == .reel), !store.cleanFeed {
                     ReelAssistOverlay(safeZones: store.framingOptions.safeZones, style: store.framingOptions.safeZoneStyle,
-                                      subject: store.subjectTracking ? store.trackedSubjectRect : nil, lost: store.trackingLost)
+                                      subject: store.dualShot && store.subjectTracking ? store.trackedSubjectRect : nil, lost: store.dualShot && store.trackingLost,
+                                      ordinaryReel: !store.dualShot, landscape: store.isLandscape, captureAngle: store.captureAngle)
                 }
 
                 if store.grid {

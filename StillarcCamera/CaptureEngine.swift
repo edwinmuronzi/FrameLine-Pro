@@ -1464,6 +1464,17 @@ nonisolated final class CaptureEngine: NSObject,
 
     #if DEBUG
     private var photoCombinationChecks: [UUID: String] = [:]
+    private var presetPhotoChecks: [UUID: CheckedContinuation<Bool,Never>] = [:]
+    func verifyPresetPhoto(raw: Bool, flash: FlashChoice, format: PhotoFormat, nativeRaw: Bool) async -> Bool {
+        await withCheckedContinuation { continuation in
+            queue.async { [weak self] in
+                guard let self, self.session.isRunning else { continuation.resume(returning:false); return }
+                let id = UUID(); self.presetPhotoChecks[id] = continuation
+                self.capturePhoto(raw:raw,flash:flash,format:format,id:id,nativeRaw:nativeRaw)
+                self.queue.asyncAfter(deadline:.now()+20) { [weak self] in self?.presetPhotoChecks.removeValue(forKey:id)?.resume(returning:false) }
+            }
+        }
+    }
 
     func verifyPhotoCombinations() {
         for (index, check) in ["Depth", "Live + Depth", "ProRAW + HEIF"].enumerated() {
@@ -1489,6 +1500,7 @@ nonisolated final class CaptureEngine: NSObject,
         queue.async { [weak self] in
             guard let self else { return }
 
+            self.synchronizePhotoDimensions()
             let settings = self.makePhotoSettings(
                 raw: raw,
                 flash: flash,
@@ -1503,7 +1515,10 @@ nonisolated final class CaptureEngine: NSObject,
                 settings.isDepthDataDeliveryEnabled = true
                 settings.embedsDepthDataInPhoto = true
             }
-            if settings.rawPhotoPixelFormatType == 0 { settings.photoQualityPrioritization = settings.isDepthDataDeliveryEnabled ? .quality : .balanced }
+            if settings.rawPhotoPixelFormatType == 0 {
+                let desired: AVCapturePhotoOutput.QualityPrioritization = settings.isDepthDataDeliveryEnabled ? .quality : .balanced
+                settings.photoQualityPrioritization = desired.rawValue <= self.photoOutput.maxPhotoQualityPrioritization.rawValue ? desired : self.photoOutput.maxPhotoQualityPrioritization
+            }
 
             let angle = self.captureAngle()
 
@@ -1521,6 +1536,12 @@ nonisolated final class CaptureEngine: NSObject,
                     guard let self else { return }
                     self.photoDelegates[uniqueID] = nil
                     #if DEBUG
+                    if let continuation = self.presetPhotoChecks.removeValue(forKey:id) {
+                        if let movie = companion.liveMovie { try? FileManager.default.removeItem(at:movie) }
+                        NSLog("PRESET_CAPTURE_RESULT processed=%d raw=%d depth=%d",processed == nil ? 0 : 1,raw == nil ? 0 : 1,companion.depth == nil ? 0 : 1)
+                        continuation.resume(returning:processed != nil)
+                        return
+                    }
                     if let check = self.photoCombinationChecks.removeValue(forKey: id) {
                         let hdr = processed.flatMap(HDRPhoto.expanded) != nil
                         NSLog("CAPTURE_COMBINATION_VERIFY %@ processed=%d raw=%d depth=%d live=%d hdr=%d",
@@ -1549,7 +1570,15 @@ nonisolated final class CaptureEngine: NSObject,
                 }
             }
             self.photoDelegates[uniqueID] = delegate
-            self.photoOutput.capturePhoto(with: settings, delegate: delegate)
+            if let reason = PhotoCaptureGuard.submit(output:self.photoOutput,settings:settings,delegate:delegate) {
+                self.photoDelegates[uniqueID] = nil
+                if let movie = settings.livePhotoMovieFileURL { try? FileManager.default.removeItem(at:movie) }
+                NSLog("PHOTO_REQUEST_REJECTED %@ raw=%u dimensions=%dx%d maxQuality=%ld quality=%ld",reason,settings.rawPhotoPixelFormatType,settings.maxPhotoDimensions.width,settings.maxPhotoDimensions.height,self.photoOutput.maxPhotoQualityPrioritization.rawValue,settings.photoQualityPrioritization.rawValue)
+                #if DEBUG
+                if let continuation = self.presetPhotoChecks.removeValue(forKey:id) { continuation.resume(returning:false); return }
+                #endif
+                self.emit(.photo(id:id,processed:nil,raw:nil,companion:PhotoCompanion()))
+            }
         }
     }
 
@@ -2754,6 +2783,17 @@ nonisolated final class CaptureEngine: NSObject,
 
     // MARK: - Photo Settings
 
+    // A preset can switch physical lenses/formats. The output's prior maximum
+    // must remain one of the newly active format's supported photo dimensions.
+    private func synchronizePhotoDimensions() {
+        guard let device = videoDevice else { return }
+        let sizes = device.activeFormat.supportedMaxPhotoDimensions
+        let current = photoOutput.maxPhotoDimensions
+        guard !sizes.contains(where:{ $0.width == current.width && $0.height == current.height }),
+              let largest = sizes.max(by:{ Int($0.width)*Int($0.height) < Int($1.width)*Int($1.height) }) else { return }
+        photoOutput.maxPhotoDimensions = largest
+    }
+
     private func makePhotoSettings(
         raw: Bool,
         flash: FlashChoice,
@@ -2830,7 +2870,7 @@ nonisolated final class CaptureEngine: NSObject,
         let allowed = photoOutput.maxPhotoDimensions
 
         let sizes = device.activeFormat.supportedMaxPhotoDimensions.filter {
-            Int($0.width) * Int($0.height) <= Int(allowed.width) * Int(allowed.height)
+            $0.width <= allowed.width && $0.height <= allowed.height
         }
 
         guard sizes.isEmpty == false else { return nil }
@@ -6113,8 +6153,9 @@ nonisolated enum AspectMovie {
             max(2, (value / 2).rounded(.down) * 2)
         }
 
-        let cropX = even(nx * Double(displayW))
-        let cropY = even(ny * Double(displayH))
+        // Zero is a valid crop origin; the size helper intentionally has a two-pixel minimum.
+        let cropX = max(0, (nx * Double(displayW) / 2).rounded(.down) * 2)
+        let cropY = max(0, (ny * Double(displayH) / 2).rounded(.down) * 2)
 
         let cropW = min(even(nw * Double(displayW)), Double(displayW) - cropX)
         let cropH = min(even(nh * Double(displayH)), Double(displayH) - cropY)
