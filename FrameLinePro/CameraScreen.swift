@@ -9,6 +9,7 @@ struct CameraScreen: View {
     @Bindable var store: CameraStore
     @Environment(\.scenePhase) private var scenePhase
     @State private var showGallery = false
+    @State private var photoMonitorReady = false
     #if DEBUG
     @State private var galleryCheckStarted = false
     #endif
@@ -212,7 +213,7 @@ struct CameraScreen: View {
                         Image(uiImage: store.showcaseImage ?? UIImage(named: scene) ?? UIImage())
                             .resizable().scaledToFill()
                     } else if store.caps.hasCamera {
-                        CameraPreview(session: store.engine.session, angle: 90, enabled: !(store.mode == .video && store.dualShot && store.monitorShown))
+                        CameraPreview(engine: store.engine, enabled: !(store.mode == .video && store.dualShot && store.monitorShown))
                     } else {
                         DemoHarborScene()
                             .modifier(DemoStyle(style: store.styleParams))
@@ -222,15 +223,22 @@ struct CameraScreen: View {
                     width: geo.size.width,
                     height: geo.size.height
                 )
-                .opacity(store.monitorShown && !store.isShowcase ? 0 : 1)
+                .opacity(store.mode == .video && store.monitorShown && !store.isShowcase ? 0 : 1)
 
-                if store.monitorShown, store.caps.hasCamera, !store.isShowcase {
+                if store.caps.hasCamera, !store.isShowcase, store.mode != .video || store.monitorShown {
                     LUTMonitorView(layer: store.engine.monitorLayer, gravity: store.mode == .video && (store.dualShot || store.framingOptions.anamorphic != .off) ? .resizeAspect : .resizeAspectFill)
                         .frame(
                             width: geo.size.width,
                             height: geo.size.height
                         )
-                        .opacity(1)
+                        .opacity(store.monitorShown && (store.mode == .video || photoMonitorReady) ? 1 : 0)
+                        .onAppear { photoMonitorReady = store.engine.monitorLayer.isReadyForDisplay }
+                        .onReceive(NotificationCenter.default.publisher(
+                            for: .AVSampleBufferDisplayLayerReadyForDisplayDidChange,
+                            object: store.engine.monitorLayer
+                        ).receive(on: RunLoop.main)) { _ in
+                            photoMonitorReady = store.engine.monitorLayer.isReadyForDisplay
+                        }
                         .allowsHitTesting(false)
                 }
 
@@ -435,7 +443,9 @@ struct CameraScreen: View {
                         ZoomBar(store: store)
                     }
 
-                    ToolBar(store: store)
+                    if store.showsPhotoToolbar {
+                        ToolBar(store: store)
+                    }
                 }
                 .padding(.horizontal, 6)
                 .padding(.bottom, 6)
@@ -705,7 +715,7 @@ struct CameraScreen: View {
     // Room kept clear at the bottom of the viewfinder for the zoom ruler and
     // the tool row.
     private var bottomReserve: CGFloat {
-        136 + (store.mode == .rangefinder && store.showFocalChips ? 40 : 0)
+        (store.showsPhotoToolbar ? 136 : 90) + (store.mode == .rangefinder && store.showFocalChips ? 40 : 0)
     }
 
     private var chipRow: some View {
@@ -1000,86 +1010,44 @@ private struct DualShotFrameOverlay: View {
 }
 
 struct CameraPreview: UIViewRepresentable {
-    let session: AVCaptureSession
-    var angle: Double = 90
+    let engine: CaptureEngine
     var enabled = true
+
+    final class Coordinator {
+        let engine: CaptureEngine
+        var enabled: Bool
+        init(engine: CaptureEngine, enabled: Bool) {
+            self.engine = engine
+            self.enabled = enabled
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(engine: engine, enabled: enabled) }
 
     func makeUIView(context: Context) -> PreviewSurface {
         let view = PreviewSurface()
         #if DEBUG
         GalleryVerification.previewMounts += 1
         #endif
-        view.previewLayer.session = session
         view.previewLayer.videoGravity = .resizeAspectFill
-        view.setAngle(angle)
-        view.syncMirroring()
-        view.previewLayer.connection?.isEnabled = enabled
-
+        engine.attachNativePreview(view.previewLayer, enabled: enabled)
         return view
     }
 
-    func updateUIView(
-        _ uiView: PreviewSurface,
-        context: Context
-    ) {
-        if uiView.previewLayer.session !== session {
-            uiView.previewLayer.session = session
-        }
+    func updateUIView(_ view: PreviewSurface, context: Context) {
+        guard context.coordinator.enabled != enabled else { return }
+        context.coordinator.enabled = enabled
+        engine.attachNativePreview(view.previewLayer, enabled: enabled)
+    }
 
-        uiView.setAngle(angle)
-        uiView.syncMirroring()
-        if let connection = uiView.previewLayer.connection, connection.isEnabled != enabled {
-            connection.isEnabled = enabled
-        }
+    static func dismantleUIView(_ view: PreviewSurface, coordinator: Coordinator) {
+        coordinator.engine.detachNativePreview(view.previewLayer)
     }
 }
 
 final class PreviewSurface: UIView {
-    override class var layerClass: AnyClass {
-        AVCaptureVideoPreviewLayer.self
-    }
-
-    var previewLayer: AVCaptureVideoPreviewLayer {
-        layer as! AVCaptureVideoPreviewLayer
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        syncMirroring()
-    }
-
-    // The front camera preview is mirrored like a selfie; the LUT monitor
-    // and aids are matched to this.
-    func syncMirroring() {
-        guard let connection = previewLayer.connection,
-              connection.isVideoMirroringSupported else {
-            return
-        }
-
-        // Connection metadata avoids querying the live session's inputs on
-        // the UI thread while its start/stop queue holds configuration locks.
-        let front = connection.inputPorts.first { $0.mediaType == .video }?
-            .sourceDevicePosition == .front
-
-        if connection.automaticallyAdjustsVideoMirroring {
-            connection.automaticallyAdjustsVideoMirroring = false
-        }
-
-        if connection.isVideoMirrored != front {
-            connection.isVideoMirrored = front
-        }
-    }
-
-    // Keeps the preview upright for the way the phone is held.
-    func setAngle(_ angle: Double) {
-        guard let connection = previewLayer.connection,
-              connection.isVideoRotationAngleSupported(CGFloat(angle)),
-              connection.videoRotationAngle != CGFloat(angle) else {
-            return
-        }
-
-        connection.videoRotationAngle = CGFloat(angle)
-    }
+    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+    var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
 }
 
 // MARK: - Frame overlay
@@ -1873,74 +1841,6 @@ struct MagnifyLoupe: View {
     }
 }
 
-// The camera picture, scaled up and moved so the focus point sits in the
-// middle of a small window. Done with UIKit so the zoom is exact.
-struct MagnifyView: UIViewRepresentable {
-    let session: AVCaptureSession
-    let point: CGPoint
-    let size: CGSize
-    let window: CGFloat
-    let zoom: CGFloat
-
-    func makeUIView(context: Context) -> MagnifyContainer {
-        let container = MagnifyContainer()
-
-        container.surface.previewLayer.session = session
-        container.surface.previewLayer.videoGravity = .resizeAspectFill
-        container.surface.setAngle(90)
-        container.surface.syncMirroring()
-
-        return container
-    }
-
-    func updateUIView(_ container: MagnifyContainer, context: Context) {
-        if container.surface.previewLayer.session !== session {
-            container.surface.previewLayer.session = session
-        }
-
-        container.surface.setAngle(90)
-        container.surface.syncMirroring()
-
-        container.place(point: point, size: size, window: window, zoom: zoom)
-    }
-}
-
-final class MagnifyContainer: UIView {
-    let surface = PreviewSurface()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-
-        clipsToBounds = true
-        backgroundColor = .black
-        addSubview(surface)
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-
-        clipsToBounds = true
-        backgroundColor = .black
-        addSubview(surface)
-    }
-
-    func place(point: CGPoint, size: CGSize, window: CGFloat, zoom: CGFloat) {
-        guard size.width > 1, size.height > 1 else { return }
-
-        // The picture is laid out at the viewfinder's size, then scaled about
-        // its own middle, so the point lands where the window's middle is.
-        surface.transform = .identity
-        surface.bounds = CGRect(origin: .zero, size: size)
-
-        surface.center = CGPoint(
-            x: window / 2 - zoom * (point.x - size.width / 2),
-            y: window / 2 - zoom * (point.y - size.height / 2)
-        )
-
-        surface.transform = CGAffineTransform(scaleX: zoom, y: zoom)
-    }
-}
-
 // MARK: - Grid overlay
 
 struct GridOverlay: View {
@@ -2117,7 +2017,9 @@ struct LUTMonitorView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ uiView: LayerHostView, coordinator: ()) {
-        uiView.hosted?.removeFromSuperlayer()
+        if let hosted = uiView.hosted, hosted.superlayer === uiView.layer {
+            hosted.removeFromSuperlayer()
+        }
     }
 }
 

@@ -529,6 +529,43 @@ nonisolated final class CaptureEngine: NSObject,
         })
     }
 
+    private weak var nativePreviewLayer: AVCaptureVideoPreviewLayer?
+    private var nativePreviewEnabled = true
+
+    func attachNativePreview(_ layer: AVCaptureVideoPreviewLayer, enabled: Bool) {
+        queue.async { [weak self, weak layer] in
+            guard let self, let layer else { return }
+            if self.nativePreviewLayer !== layer {
+                self.nativePreviewLayer?.session = nil
+                self.nativePreviewLayer = layer
+            }
+            self.nativePreviewEnabled = enabled
+            if layer.session !== self.session { layer.session = self.session }
+            self.updateNativePreviewConnection()
+        }
+    }
+
+    func detachNativePreview(_ layer: AVCaptureVideoPreviewLayer) {
+        queue.async { [weak self, layer] in
+            guard self?.nativePreviewLayer === layer else { return }
+            layer.session = nil
+            self?.nativePreviewLayer = nil
+        }
+    }
+
+    private func updateNativePreviewConnection() {
+        guard let connection = nativePreviewLayer?.connection else { return }
+        if connection.isEnabled != nativePreviewEnabled { connection.isEnabled = nativePreviewEnabled }
+        if connection.isVideoRotationAngleSupported(90), connection.videoRotationAngle != 90 {
+            connection.videoRotationAngle = 90
+        }
+        if connection.isVideoMirroringSupported {
+            if connection.automaticallyAdjustsVideoMirroring { connection.automaticallyAdjustsVideoMirroring = false }
+            let front = position == .front
+            if connection.isVideoMirrored != front { connection.isVideoMirrored = front }
+        }
+    }
+
     func makeCameraControlBridge() -> CameraControlBridge {
         CameraControlBridge(session: session, configurationQueue: queue)
     }
@@ -2830,6 +2867,7 @@ nonisolated final class CaptureEngine: NSObject,
 
     // Photos, video and the analysis frames follow how the phone is held.
     private func rotateConnections() {
+        updateNativePreviewConnection()
         let captured = captureAngle()
         lastAngle = captured
 
@@ -5486,20 +5524,34 @@ nonisolated final class CaptureEngine: NSObject,
     }
 
     // A camera style shown live in the viewfinder, with or without a LUT.
-    func setStyle(_ style: StyleParams?) {
+    func setStyle(_ style: StyleParams?, keepPhotoPreviewWarm: Bool = false) {
+        let next = (style?.isIdentity == true) ? nil : style
         monitorLock.lock()
+        if keepPhotoPreviewWarm, monitorStyle == next {
+            monitorLock.unlock()
+            return
+        }
         monitorRevision &+= 1
-        monitorStyle = (style?.isIdentity == true) ? nil : style
+        monitorStyle = next
         let idle = monitorCube == nil && monitorStyle == nil
         monitorLock.unlock()
 
-        if idle {
-            monitorLayer.sampleBufferRenderer.flush()
+        if idle, keepPhotoPreviewWarm {
+            analysisQueue.async { [weak self] in
+                guard let self, !self.monitorActive else { return }
+                self.monitorLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
+            }
+            // A quick A/B or another look choice can reuse the output without
+            // reconfiguring the camera underneath the native preview.
+            queue.asyncAfter(deadline: .now() + .milliseconds(850)) { [weak self] in
+                guard let self, !self.monitorActive else { return }
+                self.syncAnalysisOutput()
+            }
+            return
         }
+        if idle { monitorLayer.sampleBufferRenderer.flush() }
 
-        queue.async { [weak self] in
-            self?.syncAnalysisOutput()
-        }
+        queue.async { [weak self] in self?.syncAnalysisOutput() }
     }
 
     private var monitorActive: Bool {

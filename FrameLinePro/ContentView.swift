@@ -18,6 +18,8 @@ struct ContentView: View {
                 GalleryShowcase()
             } else if ProcessInfo.processInfo.arguments.contains("--show-photo-editor") {
                 PhotoEditorShowcase()
+            } else if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--verify-photo-toolbar-") }) {
+                PhotoToolbarVerification()
             } else if ProcessInfo.processInfo.arguments.contains("--verify-render-order") {
                 RenderOrderVerification()
             } else if ProcessInfo.processInfo.arguments.contains("--verify-editor-preview") {

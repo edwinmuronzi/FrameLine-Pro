@@ -22,9 +22,27 @@ final class CameraStore {
         let saved = UserDefaults.standard.stringArray(forKey: "frameline.shortcuts.v1")?.compactMap(ViewfinderShortcut.init(rawValue:))
         return saved?.count == 3 ? saved! : [.timelapse, .magnify, .timer]
     }() { didSet { if !isShowcase { UserDefaults.standard.set(viewfinderShortcuts.map(\.rawValue), forKey: "frameline.shortcuts.v1") } } }
-    var photoToolbar = PhotoToolbarControl.load() {
+    private(set) var photoToolbar = PhotoToolbarControl.load() {
         didSet { if !isShowcase { UserDefaults.standard.set(photoToolbar.map(\.rawValue), forKey: "frameline.photoToolbar.v1") } }
     }
+    var showsPhotoToolbar: Bool {
+        mode == .video || isRecording || photoToolbar.contains { $0 != .hidden }
+    }
+
+    func setPhotoToolbarControl(_ control: PhotoToolbarControl, at index: Int) {
+        guard photoToolbar.indices.contains(index), photoToolbar[index] != control else { return }
+        var updated = photoToolbar
+        if control != .hidden, let previous = updated.firstIndex(of: control) {
+            updated[previous] = updated[index]
+        }
+        updated[index] = control
+        photoToolbar = updated
+    }
+
+    func restorePhotoToolbar() {
+        photoToolbar = PhotoToolbarControl.defaults
+    }
+
     @ObservationIgnored var lockedImportObserver: Task<Void, Never>?
     var importingLockedCaptures = false
     var libraryReady = false
@@ -890,6 +908,9 @@ final class CameraStore {
 
         refreshRecordingCodecs()
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--verify-style-sliders") {
+            verifyStyleSliders()
+        }
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-combinations") {
             selectMode(.photo)
             UIApplication.shared.isIdleTimerDisabled = true
@@ -2611,7 +2632,7 @@ final class CameraStore {
     private func updateStyle() {
         let params = styleParams
         let on = params.isIdentity == false && monitorAllowed
-        engine.setStyle(on ? params : nil)
+        engine.setStyle(on ? params : nil, keepPhotoPreviewWarm: mode != .video)
     }
 
     private func updateMonitor() {
@@ -3320,6 +3341,39 @@ final class CameraStore {
     }
 
     #if DEBUG
+    private func verifyStyleSliders() {
+        Task { @MainActor in
+            UIApplication.shared.isIdleTimerDisabled = true
+            defer { UIApplication.shared.isIdleTimerDisabled = false }
+            selectMode(.photo)
+            look = .standard
+            try? await Task.sleep(for: .seconds(3))
+            guard caps.hasCamera, let night = FilmLook.lineup.first(where: { $0.id == "night35" }) else {
+                NSLog("STYLE_SLIDERS_VERIFY FAIL camera unavailable")
+                return
+            }
+            let initialExposure = exposure
+            var ready = 0
+            for _ in 0..<5 {
+                look = night
+                for _ in 0..<60 where !engine.monitorLayer.isReadyForDisplay {
+                    try? await Task.sleep(for: .milliseconds(30))
+                }
+                if engine.monitorLayer.isReadyForDisplay { ready += 1 }
+                for step in 0..<20 {
+                    setValue(.ev, -Double(step) / 10)
+                    setValue(.focus, Double(step) / 20)
+                    try? await Task.sleep(for: .milliseconds(25))
+                }
+                look = .standard
+                try? await Task.sleep(for: .milliseconds(160))
+            }
+            setAuto(.focus)
+            setExposure(initialExposure)
+            NSLog("STYLE_SLIDERS_VERIFY %@ ready=%ld/5 exposureAndFocusUpdates=200", ready == 5 ? "PASS" : "FAIL", ready)
+        }
+    }
+
     func verifyDepthResume() {
         Task { @MainActor in
             UIApplication.shared.isIdleTimerDisabled = true

@@ -13,9 +13,9 @@ nonisolated final class CameraControlBridge: NSObject, AVCaptureSessionControlsD
     var onExposure: (@MainActor (Float) -> Void)?
     var onLens: (@MainActor (Int) -> Void)?
 
-    private var installedTitles: [String] = []
-    private var slider: AnyObject?
-    private var picker: AnyObject?
+    @MainActor private var installedTitles: [String] = []
+    @MainActor private var slider: AnyObject?
+    @MainActor private var picker: AnyObject?
 
     init(session: AVCaptureSession, configurationQueue: DispatchQueue) {
         self.session = session
@@ -23,94 +23,49 @@ nonisolated final class CameraControlBridge: NSObject, AVCaptureSessionControlsD
         super.init()
     }
 
-    // Adds the controls once, and again only if the list of lenses changes.
-    func install(lensTitles: [String], selectedLens: Int, exposure: Float) {
-        configurationQueue.async { [weak self] in
-            self?.installOnQueue(lensTitles: lensTitles, selectedLens: selectedLens, exposure: exposure)
-        }
-    }
-
-    private func installOnQueue(lensTitles: [String], selectedLens: Int, exposure: Float) {
-        guard #available(iOS 18.0, *) else { return }
-        guard session.supportsControls else { return }
+    // Control values belong to their action queue. Session changes belong
+    // to the capture queue, even though the controls are created on main.
+    @MainActor func install(lensTitles: [String], selectedLens: Int, exposure: Float) {
         guard lensTitles != installedTitles || slider == nil else { return }
-
         installedTitles = lensTitles
 
-        session.setControlsDelegate(self, queue: delegateQueue)
-        session.beginConfiguration()
-
-        for control in session.controls {
-            session.removeControl(control)
-        }
-
-        slider = nil
-        picker = nil
-        let exposureSlider = AVCaptureSlider(
-            "Exposure",
-            symbolName: "plusminus.circle",
-            in: -3...3,
-            step: 0.1
-        )
-
-        exposureSlider.value = min(max(exposure, -3), 3)
-
+        let exposureSlider = AVCaptureSlider("Exposure", symbolName: "plusminus.circle", in: -3...3, step: 0.1)
         exposureSlider.setActionQueue(.main) { [weak self] value in
-            Task { @MainActor [weak self] in
-                self?.onExposure?(value)
-            }
+            Task { @MainActor [weak self] in self?.onExposure?(value) }
         }
+        exposureSlider.value = min(max(exposure, -3), 3)
+        slider = exposureSlider
 
-        if session.canAddControl(exposureSlider) {
-            session.addControl(exposureSlider)
-            slider = exposureSlider
-        }
-
+        let lensPicker: AVCaptureIndexPicker?
         if lensTitles.count > 1 {
-            let lensPicker = AVCaptureIndexPicker(
-                "Lens",
-                symbolName: "camera.aperture",
-                localizedIndexTitles: lensTitles
-            )
-
-            lensPicker.selectedIndex = min(max(selectedLens, 0), lensTitles.count - 1)
-
-            lensPicker.setActionQueue(.main) { [weak self] index in
-                Task { @MainActor [weak self] in
-                    self?.onLens?(index)
-                }
+            let control = AVCaptureIndexPicker("Lens", symbolName: "camera.aperture", localizedIndexTitles: lensTitles)
+            control.setActionQueue(.main) { [weak self] index in
+                Task { @MainActor [weak self] in self?.onLens?(index) }
             }
-
-            if session.canAddControl(lensPicker) {
-                session.addControl(lensPicker)
-                picker = lensPicker
-            }
+            control.selectedIndex = min(max(selectedLens, 0), lensTitles.count - 1)
+            lensPicker = control
+        } else {
+            lensPicker = nil
         }
+        picker = lensPicker
 
-        session.commitConfiguration()
-    }
-
-    // Keeps the button's own display in step with changes made on screen.
-    func sync(exposure: Float? = nil, lensIndex: Int? = nil) {
         configurationQueue.async { [weak self] in
-            self?.syncOnQueue(exposure: exposure, lensIndex: lensIndex)
+            guard let self, self.session.supportsControls else { return }
+            self.session.setControlsDelegate(self, queue: self.delegateQueue)
+            self.session.beginConfiguration()
+            for control in self.session.controls { self.session.removeControl(control) }
+            if self.session.canAddControl(exposureSlider) { self.session.addControl(exposureSlider) }
+            if let lensPicker, self.session.canAddControl(lensPicker) { self.session.addControl(lensPicker) }
+            self.session.commitConfiguration()
         }
     }
 
-    private func syncOnQueue(exposure: Float?, lensIndex: Int?) {
-        guard #available(iOS 18.0, *) else { return }
-
-        if let exposure,
-           let slider = slider as? AVCaptureSlider,
-           abs(slider.value - exposure) > 0.05 {
+    @MainActor func sync(exposure: Float? = nil, lensIndex: Int? = nil) {
+        if let exposure, let slider = slider as? AVCaptureSlider, abs(slider.value - exposure) > 0.05 {
             slider.value = min(max(exposure, -3), 3)
         }
-
-        if let lensIndex,
-           let picker = picker as? AVCaptureIndexPicker,
-           picker.selectedIndex != lensIndex,
-           lensIndex >= 0,
-           lensIndex < installedTitles.count {
+        if let lensIndex, let picker = picker as? AVCaptureIndexPicker,
+           installedTitles.indices.contains(lensIndex), picker.selectedIndex != lensIndex {
             picker.selectedIndex = lensIndex
         }
     }

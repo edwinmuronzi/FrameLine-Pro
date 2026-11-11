@@ -125,3 +125,9 @@ Connected phone: four consecutive styled Dual Shot starts (four angle states) re
 - The final burst diagnostic saved five Standard and five 35mm Night HEIF captures, requested 140 ms apart. Completion including processing took 2.38 s and 3.55 s respectively. Test shots were isolated from Photos.
 - Core Image fixtures verified stronger grain in midtones than highlights, a warm halation rim at a bright edge, and stable bright cores and dark background. The halo's blur works on a reduced highlight mask. Both effects apply to camera stills. Existing editing and Dual Shot render paths were outside this pass.
 - The signed Release archive passed strict code-signature verification and launched on the black iPhone 16 Pro. Older-device thermal, battery and physical-camera performance remain unverified.
+
+## 1.2.13 — control layout and camera preview stability
+
+- The iPhone crash logs identified an AVFoundation queue assertion when writing to the hardware Camera Control exposure slider. Control values now use their main action queue, and session changes use the capture queue. Native preview attachment also uses the capture queue to address the separate preview-attachment watchdog freeze.
+- On the black iPhone 16 Pro, five Standard-to-35mm Night transitions produced five ready graded previews. The app completed 200 exposure and focus updates across those transitions without closing. The preview stays on the native image while the graded layer prepares its first frame.
+- The iPhone 13 mini simulator verified moving a control, emptying all five slots, collapsing the Photo and Rangefinder bottom row, and retaining the empty layout across a process relaunch. The camera screenshot showed the remaining controls lower in the viewfinder. This covered the layout and persistence paths programmatically.

@@ -70,21 +70,25 @@ struct ShortcutSettings: View {
             }
             Section {
                 ForEach(PhotoToolbarControl.defaults.indices, id: \.self) { index in
-                    Picker(["Far left", "Left", "Center", "Right", "Far right"][index], selection: Binding(
-                        get: { store.photoToolbar[index] },
-                        set: { value in
-                            var controls = store.photoToolbar
-                            if value != .hidden, let previous = controls.firstIndex(of: value) {
-                                controls[previous] = controls[index]
+                    let position = ["Far left", "Left", "Center", "Right", "Far right"][index]
+                    Menu {
+                        ForEach(PhotoToolbarControl.allCases) { control in
+                            Button {
+                                store.setPhotoToolbarControl(control, at: index)
+                            } label: {
+                                if store.photoToolbar[index] == control {
+                                    Label(control.title, systemImage: "checkmark")
+                                } else {
+                                    Text(control.title)
+                                }
                             }
-                            controls[index] = value
-                            store.photoToolbar = controls
                         }
-                    )) {
-                        ForEach(PhotoToolbarControl.allCases) { Text($0.title).tag($0) }
+                    } label: {
+                        LabeledContent(position, value: store.photoToolbar[index].title)
+                            .contentShape(Rectangle())
                     }
                 }
-                Button("Restore photo controls") { store.photoToolbar = PhotoToolbarControl.defaults }
+                Button("Restore photo controls", action: store.restorePhotoToolbar)
             } header: {
                 Text("Photo & Rangefinder bottom row")
             } footer: {
@@ -119,3 +123,38 @@ struct CustomShortcutButton: View {
         }.accessibilityLabel(shortcut.title).accessibilityHint(shortcut.help)
     }
 }
+
+#if DEBUG
+struct PhotoToolbarVerification: View {
+    @State private var store = CameraStore()
+
+    var body: some View {
+        CameraScreen(store: store)
+            .task {
+                #if targetEnvironment(simulator)
+                store.isShowcase = false
+                store.mode = .photo
+                let arguments = ProcessInfo.processInfo.arguments
+                if arguments.contains("--verify-photo-toolbar-write") {
+                    store.restorePhotoToolbar()
+                    store.setPhotoToolbarControl(.flash, at: 0)
+                    let moved = store.photoToolbar == [.flash, .aspect, .raw, .rangefinder, .manual]
+                    for index in store.photoToolbar.indices { store.setPhotoToolbarControl(.hidden, at: index) }
+                    let photoCollapsed = !store.showsPhotoToolbar
+                    store.mode = .rangefinder
+                    let rangefinderCollapsed = !store.showsPhotoToolbar
+                    store.mode = .video
+                    let videoVisible = store.showsPhotoToolbar
+                    store.mode = .photo
+                    NSLog("PHOTO_TOOLBAR_VERIFY %@ swap=%d photoCollapsed=%d rangefinderCollapsed=%d videoVisible=%d",
+                        moved && photoCollapsed && rangefinderCollapsed && videoVisible ? "PASS" : "FAIL",
+                        moved ? 1 : 0, photoCollapsed ? 1 : 0, rangefinderCollapsed ? 1 : 0, videoVisible ? 1 : 0)
+                } else {
+                    let persisted = store.photoToolbar == Array(repeating: .hidden, count: 5) && !store.showsPhotoToolbar
+                    NSLog("PHOTO_TOOLBAR_RELAUNCH_VERIFY %@", persisted ? "PASS" : "FAIL")
+                }
+                #endif
+            }
+    }
+}
+#endif
