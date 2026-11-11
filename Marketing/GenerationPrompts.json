@@ -41,5 +41,16 @@
       "asset": "Story10",
       "prompt": "Use case: photorealistic-natural. Asset: original illustrative cinematic photographic content for StillarcCamera onboarding and marketing. Vertical 9:16 high-resolution composition. A lone adult surfer carrying a board along a remote New Zealand black sand beach at sunrise, huge textured ocean and cliffs, naturally cinematic amber highlights and teal shadows, subtle haze, crisp yet organic photographic detail. Natural cinema-grade color, believable exposure and fine organic grain, sophisticated editorial photography, no plastic skin or exaggerated HDR. No text, logos, watermarks, phone, app UI, borders, or claims the image was captured by the app. Keep room for a headline above the principal subject."
     }
-  ]
+  ],
+  "icon_design": {
+    "method": "Built-in image_gen tool, edited from the reviewed camera concept.",
+    "dark_prompt": "Black and bright yellow icon. Four circular focus arcs, a detached thin ring with a clear gap around a graphite camera aperture, and a central yellow S formed from opposing circular sweeps. Full opaque square, no text.",
+    "light_prompt": "Preserve the dark emblem geometry on a cool frosted white background, keeping saturated yellow circular arcs and S and the charcoal aperture.",
+    "tinted_prompt": "Preserve the dark emblem geometry and convert yellow to near-white for the iOS tinted appearance.",
+    "masters": [
+      "Icons/Stillarc-Dark.png",
+      "Icons/Stillarc-Light.png",
+      "Icons/Stillarc-Tinted.png"
+    ]
+  }
 }

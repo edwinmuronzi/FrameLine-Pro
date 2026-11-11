@@ -51,3 +51,8 @@ Stillarc Camera is a camera for stills, video and rangefinder framing. Choose a 
 - Set two focus distances in the viewfinder, preview imported LUTs and save your shooting setup as a preset.
 
 Format, lens and capture combinations vary by device. Listing setup also requires distribution signing, an App Store Connect app record, privacy and support URLs, and review.
+
+
+## Approved app icons
+
+[Icons](Icons) contains the approved light, dark and tinted circular Stillarc S/aperture artwork. App asset copies are opaque 1024 × 1024 PNGs; the full-resolution masters are retained here. The installed Home Screen name is **Stillarc**. Generation details are recorded in GenerationPrompts.json.

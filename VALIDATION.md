@@ -137,3 +137,11 @@ Connected phone: four consecutive styled Dual Shot starts (four angle states) re
 The app display name, Lock Screen labels, preset export names, feature tour, Xcode project, target, scheme, source directory and GitHub repository were renamed to Stillarc Camera. The laptop checkout is now Desktop/StillarcCamera. Existing bundle identifiers, preference keys and the registered capture intent retain compatibility with earlier installations. New preset links use stillarc:// and the original scheme remains registered.
 
 The renamed simulator build recaptured all ten iPhone marketing images, three iPad images and the onboarding preview. Both preset URL schemes were accepted by the simulator. The normal Release archive and strict code-signature verification passed. Existing icon asset bytes were verified unchanged, with the new icon kept as a preview outside the project.
+
+
+## 1.3.1 — approved Stillarc icons
+
+- Installed the approved circular S/aperture design in light, dark and tinted iOS icon slots. All three are opaque RGB 1024 × 1024 PNGs. The tour's brand image now follows light/dark appearance too.
+- Home Screen display names are Stillarc for the app and camera extensions. Existing bundle identifiers and saved settings remain compatible.
+- Signed Release archive, strict signature verification and simulator build passed. The Release installed on iPhone 17 Pro and black iPhone 16 Pro; iPhone 17 Pro launch passed. The black iPhone 16 Pro was locked, so its post-install launch check was blocked by iOS.
+- Full-resolution light/dark artwork replaced the previous Desktop icon images. Original approved masters and generation prompts are in Marketing/Icons and Marketing/GenerationPrompts.json.
