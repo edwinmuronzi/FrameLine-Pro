@@ -7,7 +7,7 @@ nonisolated final class CameraControlBridge: NSObject, AVCaptureSessionControlsD
 
     private let session: AVCaptureSession
     private let configurationQueue: DispatchQueue
-    private let delegateQueue = DispatchQueue(label: "frameline.cameracontrol")
+    private let delegateQueue = DispatchQueue(label: "stillarc.cameracontrol")
 
     // Called on the main actor when a control moves.
     var onExposure: (@MainActor (Float) -> Void)?

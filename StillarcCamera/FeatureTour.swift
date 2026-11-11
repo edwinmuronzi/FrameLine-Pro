@@ -27,7 +27,7 @@ struct FeatureStory: Identifiable {
         .init(id: 10, category: "MOTION & DEPTH", title: "Keep the moment.\nShape the background.", summary: "Smooth moving water with Motion Blur or turn moving lights into streaks with Light Trails. Live Photo keeps a short clip. Depth portrait lets you adjust background blur later.", tip: "Open Fn → Shooting tools → Photo capture. Choose 1, 2, 4 or 8 seconds for Slow Shutter and keep your phone steady. Open Develop photo to adjust depth blur on supported captures.", symbol: "livephoto", scene: "Story04", marketingTitle: "More than a still.", marketingSubtitle: "Live moments and supported depth portraits."),
         .init(id: 11, category: "YOUR PHOTO LAB", title: "The original stays.\nThe look can change.", summary: "Edit light and style live, or adjust the hue, saturation and lightness of individual colors. Crop, straighten and choose a smaller sharing copy. Keep HDR highlights when the original supports them.", tip: "Your original stays safe. In Gallery, tap Select to share a batch of photos and videos or delete selected captures.", symbol: "slider.horizontal.3", scene: "Story09", marketingTitle: "Make it yours again.", marketingSubtitle: "A persistent gallery and re-editable originals."),
         .init(id: 12, category: "VIEWFINDER FOCUS PULLS", title: "Tap two subjects.\nTell one story.", summary: "In Video, enable Focus Pull and tap your first subject for A, then your second for B. Tap either letter to move focus smoothly without leaving the viewfinder.", tip: "Choose the duration or move focus yourself with the slider. Marks remember distances; they don’t follow moving subjects. Set up before recording.", symbol: "camera.metering.center.weighted", scene: "Story07", marketingTitle: "Focus where it matters.", marketingSubtitle: "A and B, directly in your viewfinder."),
-        .init(id: 13, category: "READY WHEN YOU ARE", title: "Less searching.\nMore shooting.", summary: "Arrange the bottom photo controls and viewfinder shortcuts in Shooting tools. Add FrameLine camera to your Lock Screen for a simple private photo capture, then unlock to bring those shots into your gallery.", tip: "Customize the Lock Screen’s bottom control and choose FrameLine camera. Locked capture keeps other photos private and uses its own simple camera.", symbol: "lock.open", scene: "Story06", marketingTitle: "Ready for the moment.", marketingSubtitle: "Custom shortcuts and private locked capture."),
+        .init(id: 13, category: "READY WHEN YOU ARE", title: "Less searching.\nMore shooting.", summary: "Arrange the bottom photo controls and viewfinder shortcuts in Shooting tools. Add Stillarc camera to your Lock Screen for a simple private photo capture, then unlock to bring those shots into your gallery.", tip: "Customize the Lock Screen’s bottom control and choose Stillarc camera. Locked capture keeps other photos private and uses its own simple camera.", symbol: "lock.open", scene: "Story06", marketingTitle: "Ready for the moment.", marketingSubtitle: "Custom shortcuts and private locked capture."),
         .init(id: 14, category: "MAKE SOMETHING YOURS", title: "Your camera.\nYour next story.", summary: "Photo, video and rangefinder. One creative space, with images processed on your device.", tip: "Start with a moment, then make it yours. Camera access starts after this tour.", symbol: "sparkles", scene: "Story10", marketingTitle: "A creative camera.\nEvery day.", marketingSubtitle: "A considered interface.\nA cinematic point of view.")
     ]
 }
@@ -107,7 +107,7 @@ struct FeatureTour: View {
                     .blur(radius: 18).overlay(.black.opacity(0.62)).ignoresSafeArea()
                 VStack(spacing: 10) {
                     HStack {
-                        Label("FRAMELINE PRO", systemImage: "viewfinder")
+                        Label("STILLARC CAMERA", systemImage: "viewfinder")
                             .font(.system(size: 12, weight: .heavy, design: .monospaced)).tracking(2)
                         Spacer()
                         Button("Skip tour", action: finish).font(.system(size: 13, weight: .semibold))
@@ -276,7 +276,7 @@ private struct FeatureSummary: View {
                         .clipShape(RoundedRectangle(cornerRadius: 39))
                         .overlay(RoundedRectangle(cornerRadius: 39).stroke(.white.opacity(0.35)))
                         .shadow(color: .black.opacity(0.6), radius: 25, y: 12)
-                    Text("FrameLine Pro").font(.system(size: 51, weight: .bold)).tracking(-1.5)
+                    Text("Stillarc Camera").font(.system(size: 51, weight: .bold)).tracking(-1.5)
                     Text("PHOTO  ·  VIDEO  ·  RANGEFINDER").font(.system(size: 14, weight: .bold, design: .monospaced)).tracking(2).foregroundStyle(Theme.gold)
                 }
                 .padding(42)
@@ -287,7 +287,7 @@ private struct FeatureSummary: View {
         .onChange(of: reduceMotion) { _, _ in syncScrolling() }
         .onChange(of: scenePhase) { _, _ in syncScrolling() }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("FrameLine Pro. Photo, video, rangefinder, Dual Shot, looks, LUTs, manual controls, HDR photo edits, gallery selection and shooting tools.")
+        .accessibilityLabel("Stillarc Camera. Photo, video, rangefinder, Dual Shot, looks, LUTs, manual controls, HDR photo edits, gallery selection and shooting tools.")
     }
     private func syncScrolling() { scrolling = active && !reduceMotion && scenePhase == .active }
 }

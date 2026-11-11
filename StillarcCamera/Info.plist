@@ -6,9 +6,9 @@
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>FrameLine Pro preset</string>
+            <string>Stillarc Camera preset</string>
             <key>CFBundleURLSchemes</key>
-            <array><string>framelinepro</string></array>
+            <array><string>stillarc</string><string>framelinepro</string></array>
         </dict>
     </array>
 </dict>

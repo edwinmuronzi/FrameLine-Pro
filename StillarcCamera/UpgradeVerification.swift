@@ -4,7 +4,7 @@ import SwiftUI
 extension CameraStore {
     func verifyLibraryAndEdits() {
         Task { @MainActor in
-            let root = FileManager.default.temporaryDirectory.appendingPathComponent("FrameLineLibraryVerification-\(UUID().uuidString)")
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("StillarcLibraryVerification-\(UUID().uuidString)")
             try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: root) }
             let begin = ProcessInfo.processInfo.systemUptime

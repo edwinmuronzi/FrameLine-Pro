@@ -5,7 +5,7 @@ import Vision
 nonisolated final class SubjectTracker: @unchecked Sendable {
     let state: ReelTrackingState
     var onUpdate: (@Sendable (CGRect?, Bool, CGPoint?) -> Void)?
-    private let queue = DispatchQueue(label: "frameline.subjectTracking", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "stillarc.subjectTracking", qos: .userInitiated)
     private let lock = NSLock()
     private var enabled = false
     private var busy = false

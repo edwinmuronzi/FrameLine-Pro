@@ -1,13 +1,13 @@
-# FrameLinePro
+# Stillarc Camera
 
 **Your vision. Beautifully framed.**
 
-A creative camera for iPhone: natural photography, expressive video, and a rangefinder way of seeing. FrameLinePro brings live looks, manual controls, exposure aids and two-format recording into one considered interface.
+A creative camera for iPhone: natural photography, expressive video, and a rangefinder way of seeing. StillarcCamera brings live looks, manual controls, exposure aids and two-format recording into one considered interface.
 
-[Download the Xcode project](https://github.com/edwinmuronzi/FrameLine-Pro/archive/refs/heads/main.zip) · [Marketing images](Marketing/AppStore) · [Releases](https://github.com/edwinmuronzi/FrameLine-Pro/releases) · [Report an issue](https://github.com/edwinmuronzi/FrameLine-Pro/issues)
+[Download the Xcode project](https://github.com/edwinmuronzi/Stillarc-Camera/archive/refs/heads/main.zip) · [Marketing images](Marketing/AppStore) · [Releases](https://github.com/edwinmuronzi/Stillarc-Camera/releases) · [Report an issue](https://github.com/edwinmuronzi/Stillarc-Camera/issues)
 
 <p align="center">
-  <img src="Marketing/AppStore/01-your-pocket-camera-studio.png" width="31%" alt="FrameLinePro rangefinder camera interface over a cinematic coastal scene">
+  <img src="Marketing/AppStore/01-your-pocket-camera-studio.png" width="31%" alt="StillarcCamera rangefinder camera interface over a cinematic coastal scene">
   <img src="Marketing/AppStore/04-dual-shot.png" width="31%" alt="Dual Shot landscape and vertical video previews">
   <img src="Marketing/AppStore/07-manual-control.png" width="31%" alt="Manual exposure, ISO, shutter, white balance and focus controls">
 </p>
@@ -19,16 +19,16 @@ A creative camera for iPhone: natural photography, expressive video, and a range
 ### Install with your free Apple Account
 
 1. Use a Mac capable of running **Xcode 27.2 or newer**. Install Xcode from Apple and open it once to finish installing its components.
-2. [Download this project](https://github.com/edwinmuronzi/FrameLine-Pro/archive/refs/heads/main.zip) and unzip it, or clone it:
+2. [Download this project](https://github.com/edwinmuronzi/Stillarc-Camera/archive/refs/heads/main.zip) and unzip it, or clone it:
    ```sh
-   git clone https://github.com/edwinmuronzi/FrameLine-Pro.git
+   git clone https://github.com/edwinmuronzi/Stillarc-Camera.git
    ```
-3. Open **FrameLinePro.xcodeproj** in Xcode. Select the **MyApp** scheme.
+3. Open **StillarcCamera.xcodeproj** in Xcode. Select the **StillarcCamera** scheme.
 4. In **Xcode → Settings → Accounts**, add your own Apple Account. Keep your credentials private.
-5. Select the **FrameLinePro** target, open **Signing & Capabilities**, enable automatic signing, and select **your Personal Team**. Change the bundle identifier to a unique value you control, for example `com.yourname.FrameLinePro`. Select your team for **LockCapture** and **CameraControlWidget** too; give those targets matching prefixes and unique suffixes, such as `com.yourname.FrameLinePro.LockCapture` and `com.yourname.FrameLinePro.CameraControlWidget`.
+5. Select the **StillarcCamera** target, open **Signing & Capabilities**, enable automatic signing, and select **your Personal Team**. Change the bundle identifier to a unique value you control, for example `com.yourname.StillarcCamera`. Select your team for **LockCapture** and **CameraControlWidget** too; give those targets matching prefixes and unique suffixes, such as `com.yourname.StillarcCamera.LockCapture` and `com.yourname.StillarcCamera.CameraControlWidget`.
 6. Connect your iPhone, unlock it, and trust the Mac if asked. The phone must run **iOS 26 or newer**.
 7. Select the phone as the run destination and press **Run (⌘R)**. If iOS asks, enable **Developer Mode** under Settings → Privacy & Security, restart, and confirm. Follow any developer-trust prompt shown by iOS.
-8. Open FrameLinePro, explore or skip the feature tour, then allow camera access. Microphone access is needed for sound in videos; Photos access is needed to save into your library.
+8. Open StillarcCamera, explore or skip the feature tour, then allow camera access. Microphone access is needed for sound in videos; Photos access is needed to save into your library.
 
 Personal Team signing expires periodically. If the development app stops opening, connect the phone and run it from Xcode again. This method needs a Mac; there is currently no supported phone-only public install.
 
@@ -115,7 +115,7 @@ Use **Fn → Shooting tools → Viewfinder shortcuts** to choose the three butto
 
 ### Lock Screen camera
 
-Long-press your Lock Screen, choose **Customize**, replace a bottom control and select **FrameLine camera**. You can also add its control in Control Center. The locked camera is a separate, simple photo experience: it cannot browse your gallery or expose previous images. Tap its open-app button to authenticate and open the full app. After unlocking, new photos are imported into FrameLinePro’s gallery. Camera permission must be granted; the system controls authentication and extension availability. After updating an existing control, remove and add FrameLine camera again if iOS has cached the old registration. The capture extension includes the shared camera intent and hardware-capture event handler required by the system lifecycle. When the phone is already unlocked, the intent explicitly opens the camera in the main app.
+Long-press your Lock Screen, choose **Customize**, replace a bottom control and select **Stillarc camera**. You can also add its control in Control Center. The locked camera is a separate, simple photo experience: it cannot browse your gallery or expose previous images. Tap its open-app button to authenticate and open the full app. After unlocking, new photos are imported into StillarcCamera’s gallery. Camera permission must be granted; the system controls authentication and extension availability. After updating an existing control, remove and add Stillarc camera again if iOS has cached the old registration. The capture extension includes the shared camera intent and hardware-capture event handler required by the system lifecycle. When the phone is already unlocked, the intent explicitly opens the camera in the main app.
 
 ### Plain-English camera guide
 
@@ -162,7 +162,7 @@ HEIF Max, RAW, flash, low-light processing and bracketing take longer than ordin
 
 ### Slow shutter — motion blur and light trails
 
-Open **Fn → Shooting tools → Photo capture → Slow shutter**. Choose **Motion blur** to smooth moving water or crowds, or **Light trails** to turn moving lights into streaks. Pick 1, 2, 4 or 8 seconds, steady the phone and tap the shutter. FrameLine blends camera frames into a processed still up to 2048 pixels on the longest edge. Turn Slow shutter off to resume regular still capture.
+Open **Fn → Shooting tools → Photo capture → Slow shutter**. Choose **Motion blur** to smooth moving water or crowds, or **Light trails** to turn moving lights into streaks. Pick 1, 2, 4 or 8 seconds, steady the phone and tap the shutter. Stillarc blends camera frames into a processed still up to 2048 pixels on the longest edge. Turn Slow shutter off to resume regular still capture.
 
 ### Rangefinder — see beyond the crop
 
@@ -189,7 +189,7 @@ In **Gallery → Develop Photo**, open **Color mix** to shift the hue, intensity
 
 **LUTs** are imported `.cube` color transforms. Use the **LUT** pill to select a transform and adjust its mix. Preview and baking are independent: seeing a LUT in the viewfinder does not, by itself, mean it will be written into a file. The LUT pill is yellow when baking is active and white otherwise. Hold/tap A/B to compare against the original preview.
 
-**Shooting presets** remember a setup, including format, exposure, white balance, focus, lens/zoom, style/LUT, Dual Shot, framing and audio choices. Use **LUT → Save Preset** or **Fn → Shooting tools → Shooting presets**. The selected preset is yellow. Changing its setup clears the selection; automatic exposure/focus readings do not. Photo capture modes are included in saved presets. Apply presets between recordings. In **Manage**, use **Export presets** and **Import presets** to move your setups through Files. Custom looks and LUTs referenced by name need to be available on the destination device. Touch and hold a saved preset to copy its launch link, then use that link with the **Open URLs** action in Shortcuts to open FrameLine Pro with that setup.
+**Shooting presets** remember a setup, including format, exposure, white balance, focus, lens/zoom, style/LUT, Dual Shot, framing and audio choices. Use **LUT → Save Preset** or **Fn → Shooting tools → Shooting presets**. The selected preset is yellow. Changing its setup clears the selection; automatic exposure/focus readings do not. Photo capture modes are included in saved presets. Apply presets between recordings. In **Manage**, use **Export presets** and **Import presets** to move your setups through Files. Custom looks and LUTs referenced by name need to be available on the destination device. Touch and hold a saved preset to copy its launch link, then use that link with the **Open URLs** action in Shortcuts to open Stillarc Camera with that setup.
 
 ### What saves
 
@@ -238,7 +238,7 @@ The fifteen-page introduction showcases photography, video, Dual Shot, live look
 - Rendering resources are reused, photo processing is bounded, and motion/storage polling pauses in the background. The zoom ruler does not run a constant display-rate redraw while idle.
 - Camera hardware, screen brightness, high resolution, tracking and grading still consume power and can warm the phone. There is no zero-heat, zero-drain or zero-lag guarantee.
 
-The marketing scenes are **AI-generated illustrative photography**, not evidence that FrameLinePro captured those images. The interfaces shown are rendered from the app’s own views. Images in the Halide reference material are not redistributed as FrameLinePro assets.
+The marketing scenes are **AI-generated illustrative photography**, not evidence that StillarcCamera captured those images. The interfaces shown are rendered from the app’s own views. Images in the Halide reference material are not redistributed as StillarcCamera assets.
 
 ## Marketing kit
 
@@ -258,14 +258,17 @@ See [validation results and remaining device checks](VALIDATION.md) for the test
 
 ## Build and development
 
-Open `FrameLinePro.xcodeproj`, use scheme **MyApp**, and build the **FrameLinePro** target. For everyday phone use, choose **Release** in Product → Scheme → Edit Scheme → Run → Build Configuration; Debug builds prioritize debugging over speed. Swift source is in `FrameLinePro/`. Photos and saves must be checked on real devices; simulator previews do not validate camera speed, lens transitions or thermal behavior.
+Open `StillarcCamera.xcodeproj`, use scheme **StillarcCamera**, and build the **StillarcCamera** target. For everyday phone use, choose **Release** in Product → Scheme → Edit Scheme → Run → Build Configuration; Debug builds prioritize debugging over speed. Swift source is in `StillarcCamera/`. Photos and saves must be checked on real devices; simulator previews do not validate camera speed, lens transitions or thermal behavior.
 
 ```sh
-xcodebuild -project FrameLinePro.xcodeproj \
-  -scheme MyApp -configuration Release \
+xcodebuild -project StillarcCamera.xcodeproj \
+  -scheme StillarcCamera -configuration Release \
   -destination 'generic/platform=iOS' build
 ```
 
 Choose your signing team before using the device build command. See [DEVELOPMENT.md](DEVELOPMENT.md) for regression checks and the build/install/push workflow.
 
-Found an issue? Include the iPhone model, iOS version, mode, format/frame rate, look/LUT state and exact steps in [an issue](https://github.com/edwinmuronzi/FrameLine-Pro/issues). Please do not attach private photos or credentials unless you intend to share them publicly.
+Found an issue? Include the iPhone model, iOS version, mode, format/frame rate, look/LUT state and exact steps in [an issue](https://github.com/edwinmuronzi/Stillarc-Camera/issues). Please do not attach private photos or credentials unless you intend to share them publicly.
+
+
+The display name, Xcode project and GitHub repository use Stillarc Camera. The installed app retains its original bundle identifier and stored preference keys so an update keeps existing captures, presets and settings. New preset links use the stillarc scheme, and previously copied links remain supported.

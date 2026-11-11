@@ -1,6 +1,6 @@
-# FrameLinePro marketing kit
+# Stillarc Camera marketing kit
 
-Ten portrait marketing images for the iPhone App Store screenshot slot. Each file in `AppStore/` is an opaque RGB PNG at **1320 × 2868**. Typography, device framing, captions and feature copy are rendered in code; the app interfaces are captured from the actual running simulator views. The photographic scenes are original **AI-generated illustrations**, not claims of images captured with FrameLinePro.
+Ten portrait marketing images for the iPhone App Store screenshot slot. Each file in `AppStore/` is an opaque RGB PNG at **1320 × 2868**. Typography, device framing, captions and feature copy are rendered in code; the app interfaces are captured from the actual running simulator views. The photographic scenes are original **AI-generated illustrations**, not claims of images captured with StillarcCamera.
 
 ## Set order
 
@@ -17,10 +17,10 @@ Ten portrait marketing images for the iPhone App Store screenshot slot. Each fil
 
 ## Source and editable copy
 
-- `FrameLinePro/FeatureTour.swift`: shared feature text and the fifteen-page first-launch tour. The marketing exporter uses the original nine shooting topics plus the final brand page.
-- `FrameLinePro/MarketingExport.swift`: Debug-only native screenshot compositor.
-- `FrameLinePro/Assets.xcassets/Story*.imageset`: original illustrative photography used by the tour.
-- `FrameLinePro/Assets.xcassets/Screen*.imageset`: compressed interface previews for efficient onboarding.
+- `StillarcCamera/FeatureTour.swift`: shared feature text and the fifteen-page first-launch tour. The marketing exporter uses the original nine shooting topics plus the final brand page.
+- `StillarcCamera/MarketingExport.swift`: Debug-only native screenshot compositor.
+- `StillarcCamera/Assets.xcassets/Story*.imageset`: original illustrative photography used by the tour.
+- `StillarcCamera/Assets.xcassets/Screen*.imageset`: compressed interface previews for efficient onboarding.
 - `GenerationPrompts.json`: prompt set and generation method (built-in image_gen).
 - `AppStore/`: finished marketing PNGs. `Overview.jpg` is a review contact sheet, not a listing screenshot.
 
@@ -42,7 +42,7 @@ A download of these PNGs is not an app installation. The current free Personal T
 
 **Subtitle:** Film looks and manual camera
 
-FrameLine Pro is a camera for stills, video and rangefinder framing. Choose a film look live, shape exposure and focus, and keep your favorite controls within reach.
+Stillarc Camera is a camera for stills, video and rangefinder framing. Choose a film look live, shape exposure and focus, and keep your favorite controls within reach.
 
 - Keep natural texture with supported RAW capture, depth portraits and HDR highlights.
 - Give photos midtone grain or warm light halos with 35mm Night.

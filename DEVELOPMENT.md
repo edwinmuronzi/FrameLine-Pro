@@ -1,8 +1,8 @@
-# FrameLinePro development
+# StillarcCamera development
 
-Open `FrameLinePro.xcodeproj` and use scheme `MyApp`. The Swift source and assets are in `FrameLinePro/`.
+Open `StillarcCamera.xcodeproj` and use scheme `MyApp`. The Swift source and assets are in `StillarcCamera/`.
 
-After changes, build in Xcode, install on the connected iPhone, and leave the app open for device testing. Commit the complete source changes and push to https://github.com/edwinmuronzi/FrameLine-Pro after verification. Exclude build products, local Xcode state and credentials.
+After changes, build in Xcode, install on the connected iPhone, and leave the app open for device testing. Commit the complete source changes and push to https://github.com/edwinmuronzi/Stillarc-Camera after verification. Exclude build products, local Xcode state and credentials.
 
 ## Device regression checks
 

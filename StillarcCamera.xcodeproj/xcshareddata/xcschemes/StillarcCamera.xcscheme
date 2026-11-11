@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "000000000000000100000000"
-               BuildableName = "FrameLinePro.app"
-               BlueprintName = "FrameLinePro"
-               ReferencedContainer = "container:FrameLinePro.xcodeproj">
+               BuildableName = "StillarcCamera.app"
+               BlueprintName = "StillarcCamera"
+               ReferencedContainer = "container:StillarcCamera.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -46,9 +46,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "000000000000000100000000"
-            BuildableName = "FrameLinePro.app"
-            BlueprintName = "FrameLinePro"
-            ReferencedContainer = "container:FrameLinePro.xcodeproj">
+            BuildableName = "StillarcCamera.app"
+            BlueprintName = "StillarcCamera"
+            ReferencedContainer = "container:StillarcCamera.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -63,9 +63,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "000000000000000100000000"
-            BuildableName = "FrameLinePro.app"
-            BlueprintName = "FrameLinePro"
-            ReferencedContainer = "container:FrameLinePro.xcodeproj">
+            BuildableName = "StillarcCamera.app"
+            BlueprintName = "StillarcCamera"
+            ReferencedContainer = "container:StillarcCamera.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

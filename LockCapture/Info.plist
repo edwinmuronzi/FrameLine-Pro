@@ -8,6 +8,6 @@
 		<string>com.apple.securecapture</string>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>FrameLine captures photos from your Lock Screen.</string>
+	<string>Stillarc captures photos from your Lock Screen.</string>
 </dict>
 </plist>

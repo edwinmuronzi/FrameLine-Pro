@@ -53,11 +53,11 @@ struct ContentView: View {
                     .onAppear { if cameraRequested { tourCompleted = true; store.showWelcome = false; cameraRequested = false } }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("FrameLineOpenCamera"))) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StillarcOpenCamera"))) { _ in
             tourCompleted = true; store.showWelcome = false
         }
         .onOpenURL { url in
-            guard url.scheme == "framelinepro", url.host == "preset",
+            guard ["stillarc", "framelinepro"].contains(url.scheme ?? ""), url.host == "preset",
                   url.pathComponents.count == 2,
                   let id = UUID(uuidString: url.lastPathComponent),
                   let preset = store.shootingPresets.first(where: { $0.id == id }) else { return }

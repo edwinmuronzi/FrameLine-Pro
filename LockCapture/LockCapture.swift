@@ -6,7 +6,7 @@ import SwiftUI
 import UIKit
 
 @main
-struct FrameLineLockCapture: LockedCameraCaptureExtension {
+struct StillarcLockCapture: LockedCameraCaptureExtension {
     var body: some LockedCameraCaptureExtensionScene {
         LockedCameraCaptureUIScene { session in SecureCamera(session: session) }
     }
@@ -18,7 +18,7 @@ struct SecureCamera: View {
         ZStack {
             Color.black.ignoresSafeArea()
             VStack(spacing: 20) {
-                Text("FRAMELINE PRO").font(.system(.headline, design: .monospaced)).tracking(3)
+                Text("STILLARC CAMERA").font(.system(.headline, design: .monospaced)).tracking(3)
                 SecurePreview(session: camera.captureSession).clipShape(RoundedRectangle(cornerRadius: 28))
                 Text(camera.message).font(.caption).foregroundStyle(.secondary)
                 HStack(spacing: 50) {
@@ -28,7 +28,7 @@ struct SecureCamera: View {
                     }.disabled(camera.busy || !camera.ready).accessibilityLabel("Take photo")
                     Button {
                         Task { try? await session.openApplication(for: NSUserActivity(activityType: NSUserActivityTypeLockedCameraCapture)) }
-                    } label: { Image(systemName: "arrow.up.forward.app").font(.title2) }.accessibilityLabel("Unlock and open FrameLine")
+                    } label: { Image(systemName: "arrow.up.forward.app").font(.title2) }.accessibilityLabel("Unlock and open Stillarc")
                 }
             }.padding(20)
         }.foregroundStyle(.white).preferredColorScheme(.dark)
@@ -52,11 +52,11 @@ struct SecurePreview: UIViewRepresentable {
     let captureSession = AVCaptureSession()
     private let driver = SecureCameraDriver()
     var busy = false; var ready = false
-    var message = "Photos stay private until you unlock and open FrameLine."
+    var message = "Photos stay private until you unlock and open Stillarc."
     func start() async {
-        guard await AVCaptureDevice.requestAccess(for: .video) else { message = "Open FrameLine and allow Camera access first."; return }
+        guard await AVCaptureDevice.requestAccess(for: .video) else { message = "Open Stillarc and allow Camera access first."; return }
         ready = await driver.start(captureSession)
-        if !ready { message = "Camera unavailable. Unlock to open FrameLine." }
+        if !ready { message = "Camera unavailable. Unlock to open Stillarc." }
     }
     func stop() { driver.stop(captureSession) }
     func shoot(into directory: URL) {
@@ -64,13 +64,13 @@ struct SecurePreview: UIViewRepresentable {
         driver.shoot(into: directory) { [weak self] success in
             Task { @MainActor in
                 self?.busy = false
-                self?.message = success ? "Photo saved. Open FrameLine after unlocking to review it." : "Couldn’t save. Please try again."
+                self?.message = success ? "Photo saved. Open Stillarc after unlocking to review it." : "Couldn’t save. Please try again."
             }
         }
     }
 }
 nonisolated final class SecureCameraDriver: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "FrameLine.lock.camera")
+    private let queue = DispatchQueue(label: "Stillarc.lock.camera")
     private let output = AVCapturePhotoOutput()
     private weak var activeSession: AVCaptureSession?
     private var wantsRunning = true

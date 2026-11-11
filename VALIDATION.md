@@ -1,4 +1,4 @@
-# FrameLinePro 1.2 validation
+# StillarcCamera 1.2 validation
 
 The signed Release archive, the Debug simulator build and both embedded camera extensions build successfully with the installed Xcode toolchain. The final phone installation uses Release optimization without the Debug diagnostic flag. Minimum deployment remains iOS 26.
 
@@ -131,3 +131,9 @@ Connected phone: four consecutive styled Dual Shot starts (four angle states) re
 - The iPhone crash logs identified an AVFoundation queue assertion when writing to the hardware Camera Control exposure slider. Control values now use their main action queue, and session changes use the capture queue. Native preview attachment also uses the capture queue to address the separate preview-attachment watchdog freeze.
 - On the black iPhone 16 Pro, five Standard-to-35mm Night transitions produced five ready graded previews. The app completed 200 exposure and focus updates across those transitions without closing. The preview stays on the native image while the graded layer prepares its first frame.
 - The iPhone 13 mini simulator verified moving a control, emptying all five slots, collapsing the Photo and Rangefinder bottom row, and retaining the empty layout across a process relaunch. The camera screenshot showed the remaining controls lower in the viewfinder. This covered the layout and persistence paths programmatically.
+
+## 1.3.0 — Stillarc Camera rebrand
+
+The app display name, Lock Screen labels, preset export names, feature tour, Xcode project, target, scheme, source directory and GitHub repository were renamed to Stillarc Camera. The laptop checkout is now Desktop/StillarcCamera. Existing bundle identifiers, preference keys and the registered capture intent retain compatibility with earlier installations. New preset links use stillarc:// and the original scheme remains registered.
+
+The renamed simulator build recaptured all ten iPhone marketing images, three iPad images and the onboarding preview. Both preset URL schemes were accepted by the simulator. The normal Release archive and strict code-signature verification passed. Existing icon asset bytes were verified unchanged, with the new icon kept as a preview outside the project.

@@ -381,7 +381,7 @@ struct SettingsSheet: View {
                     }
                 }
 
-                Section("Discover FrameLinePro") {
+                Section("Discover StillarcCamera") {
                     Button("Replay the feature tour", systemImage: "sparkles.rectangle.stack") { store.showWelcome = true }
                 }
 

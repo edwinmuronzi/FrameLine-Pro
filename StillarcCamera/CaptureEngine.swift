@@ -281,7 +281,7 @@ nonisolated final class CaptureEngine: NSObject,
     private var previewFormats: [ObjectIdentifier: CMVideoFormatDescription] = [:]
     private let previewColorSpace = CGColorSpaceCreateDeviceRGB()
     private let cameraAudio = CameraAudioController()
-    private let audioQueue = DispatchQueue(label: "frameline.audio", qos: .userInteractive)
+    private let audioQueue = DispatchQueue(label: "stillarc.audio", qos: .userInteractive)
     private var headphonesMonitoring = false
     private var preferredMicrophone: String?
     private var routeObserver: NSObjectProtocol?
@@ -290,7 +290,7 @@ nonisolated final class CaptureEngine: NSObject,
     private var needsSessionRebuild = false
     var onLenses: (@Sendable ([LensOption], String?, Bool) -> Void)?
 
-    private let queue = DispatchQueue(label: "frameliner.capture")
+    private let queue = DispatchQueue(label: "stillarc.capture")
 
     private let photoOutput = AVCapturePhotoOutput()
     private let movieOutput = AVCaptureMovieFileOutput()
@@ -319,8 +319,8 @@ nonisolated final class CaptureEngine: NSObject,
     // Exposure aids (histogram, zebras, focus peaking).
     var onAnalysis: (@Sendable (AnalysisFrame) -> Void)?
     private let analysisOutput = AVCaptureVideoDataOutput()
-    private let analysisQueue = DispatchQueue(label: "frameliner.analysis", qos: .userInitiated)
-    private let scopesQueue = DispatchQueue(label: "frameline.scopes", qos: .utility)
+    private let analysisQueue = DispatchQueue(label: "stillarc.analysis", qos: .userInitiated)
+    private let scopesQueue = DispatchQueue(label: "stillarc.scopes", qos: .utility)
     private let auxiliaryLock = NSLock()
     private var scopesBusy = false
     private var loupeBusy = false
@@ -343,7 +343,7 @@ nonisolated final class CaptureEngine: NSObject,
     // Log HEVC recording through an asset writer.
     private let writerVideoOutput = AVCaptureVideoDataOutput()
     private let writerAudioOutput = AVCaptureAudioDataOutput()
-    private let writerQueue = DispatchQueue(label: "frameliner.writer", qos: .userInitiated)
+    private let writerQueue = DispatchQueue(label: "stillarc.writer", qos: .userInitiated)
     private let writerLock = NSLock()
     private var activeWriter: LogWriter?
 
@@ -857,7 +857,7 @@ nonisolated final class CaptureEngine: NSObject,
                 zoom = max(2, (raw + 0.25).rounded(.down))
             }
 
-            print("FRAMELINE LENS: \(device.localizedName) measured \(raw)x, labelled \(zoom)x")
+            print("STILLARC LENS: \(device.localizedName) measured \(raw)x, labelled \(zoom)x")
 
             options.append(
                 LensOption(deviceID: device.uniqueID, crop: 1, zoom: zoom)
@@ -1624,7 +1624,7 @@ nonisolated final class CaptureEngine: NSObject,
 
                 if union.isEmpty == false {
                     print("""
-                    FRAMELINE DISCOVERED RECORDING CODECS (custom format):
+                    STILLARC DISCOVERED RECORDING CODECS (custom format):
                     \(union.map { "\($0.title) [\($0.rawValue)]" })
                     """)
 
@@ -1634,7 +1634,7 @@ nonisolated final class CaptureEngine: NSObject,
                     return
                 }
 
-                print("FRAMELINE: no codec found for the requested format; using the default format.")
+                print("STILLARC: no codec found for the requested format; using the default format.")
 
                 self.rebuildSingle(commitRestart: false)
                 self.dualActive = false
@@ -1666,7 +1666,7 @@ nonisolated final class CaptureEngine: NSObject,
             }
 
             print("""
-            FRAMELINE DISCOVERED RECORDING CODECS:
+            STILLARC DISCOVERED RECORDING CODECS:
             \(available.map { "\($0.title) [\($0.rawValue)]" })
             """)
 
@@ -1978,7 +1978,7 @@ nonisolated final class CaptureEngine: NSObject,
             self.finishedSecondary = !self.dualActive
 
             self.primaryURL = self.makeURL(
-                prefix: log == .off ? "FrameLine" : "Log"
+                prefix: log == .off ? "Stillarc" : "Log"
             )
 
             self.secondaryURL = self.dualActive
@@ -1997,7 +1997,7 @@ nonisolated final class CaptureEngine: NSObject,
                 let frame = device.activeVideoMinFrameDuration
 
                 print("""
-                FRAMELINE RECORDING
+                STILLARC RECORDING
                 Codec: \(selectedCodec.title)
                 Resolution: \(size.width)x\(size.height)
                 Frame duration: \(frame.isValid ? frame.seconds : 0)
@@ -2547,7 +2547,7 @@ nonisolated final class CaptureEngine: NSObject,
             session.commitConfiguration()
 
             print("""
-            FRAMELINE LOG CONFIGURATION ERROR
+            STILLARC LOG CONFIGURATION ERROR
             Requested profile: \(profile.title)
             Error: \(error.localizedDescription)
             """)
@@ -2570,7 +2570,7 @@ nonisolated final class CaptureEngine: NSObject,
 
         print("""
 
-        ========== FRAMELINE LOG RESULT ==========
+        ========== STILLARC LOG RESULT ==========
         Requested profile: \(profile.title)
         Requested colour space: \(target)
         Selected resolution: \(dimensions.width)x\(dimensions.height)
@@ -2616,7 +2616,7 @@ nonisolated final class CaptureEngine: NSObject,
     ) {
         print("""
 
-        ========== FRAMELINE LOG DIAGNOSTICS ==========
+        ========== STILLARC LOG DIAGNOSTICS ==========
         Camera: \(device.localizedName)
         Device type: \(device.deviceType)
         Requested colour space: \(requested)
@@ -2670,7 +2670,7 @@ nonisolated final class CaptureEngine: NSObject,
 
             print("""
 
-            ========== FRAMELINE CAMERA DIAGNOSTICS ==========
+            ========== STILLARC CAMERA DIAGNOSTICS ==========
             Camera name: \(device.localizedName)
             Device type: \(device.deviceType)
             Position: \(device.position.rawValue)
@@ -2905,7 +2905,7 @@ nonisolated final class CaptureEngine: NSObject,
         bitrate: Int? = nil
     ) -> Bool {
         guard let connection = output.connection(with: .video) else {
-            print("FRAMELINE: No video connection available for movie output.")
+            print("STILLARC: No video connection available for movie output.")
             return false
         }
 
@@ -2914,7 +2914,7 @@ nonisolated final class CaptureEngine: NSObject,
 
         guard available.contains(codec) else {
             print("""
-            FRAMELINE CODEC NOT AVAILABLE
+            STILLARC CODEC NOT AVAILABLE
             Requested: \(selected.rawValue)
             Available: \(available.map(\.rawValue))
             """)
@@ -2933,9 +2933,9 @@ nonisolated final class CaptureEngine: NSObject,
                     AVVideoAverageBitRateKey: bitrate
                 ]
 
-                print("FRAMELINE BITRATE: \(bitrate / 1_000_000) Mbps")
+                print("STILLARC BITRATE: \(bitrate / 1_000_000) Mbps")
             } else {
-                print("FRAMELINE: custom bitrate is not supported by this output. Supported keys: \(keys)")
+                print("STILLARC: custom bitrate is not supported by this output. Supported keys: \(keys)")
 
                 emit(.message(
                     "This format does not allow a custom bitrate. Using the default."
@@ -2949,7 +2949,7 @@ nonisolated final class CaptureEngine: NSObject,
             connection.preferredVideoStabilizationMode = supported(videoStabilization)
         }
 
-        print("FRAMELINE SELECTED VIDEO CODEC: \(selected.title)")
+        print("STILLARC SELECTED VIDEO CODEC: \(selected.title)")
 
         return true
     }
@@ -3221,13 +3221,13 @@ nonisolated final class CaptureEngine: NSObject,
         } catch {
             applied = false
 
-            print("FRAMELINE FORMAT ERROR: \(error.localizedDescription)")
+            print("STILLARC FORMAT ERROR: \(error.localizedDescription)")
         }
 
         session.commitConfiguration()
 
         if applied, log != .off, device.activeColorSpace != target {
-            print("FRAMELINE: \(log.title) did not activate on this format.")
+            print("STILLARC: \(log.title) did not activate on this format.")
             applied = false
         }
 
@@ -3252,7 +3252,7 @@ nonisolated final class CaptureEngine: NSObject,
                 log: log,
                 settings: settings
             ) else {
-                print("FRAMELINE FORMAT PROBE\nGroup: \(group.label)\nNot offered for \(log.title) on this lens.")
+                print("STILLARC FORMAT PROBE\nGroup: \(group.label)\nNot offered for \(log.title) on this lens.")
                 continue
             }
 
@@ -3273,7 +3273,7 @@ nonisolated final class CaptureEngine: NSObject,
             let size = format.formatDescription.dimensions
 
             print("""
-            FRAMELINE FORMAT PROBE
+            STILLARC FORMAT PROBE
             Group: \(group.label)
             Resolution: \(size.width)x\(size.height)
             Codecs: \(codecs.map(\.rawValue))
@@ -3472,7 +3472,7 @@ nonisolated final class CaptureEngine: NSObject,
 
             session.automaticallyConfiguresApplicationAudioSession = false
         } catch {
-            print("FRAMELINE AUDIO SESSION: \(error.localizedDescription)")
+            print("STILLARC AUDIO SESSION: \(error.localizedDescription)")
         }
     }
 
@@ -3902,7 +3902,7 @@ nonisolated final class CaptureEngine: NSObject,
         if analysisIgnoredLogged == false,
            min(width, height) > min(analysisApplied.w, analysisApplied.h) * 3 / 2 {
             analysisIgnoredLogged = true
-            print("FRAMELINE ANALYSIS: asked for \(analysisApplied.w)x\(analysisApplied.h) but frames are \(width)x\(height)")
+            print("STILLARC ANALYSIS: asked for \(analysisApplied.w)x\(analysisApplied.h) but frames are \(width)x\(height)")
         }
 
         if abs(actual - expected) / expected < 0.03 {
@@ -3928,7 +3928,7 @@ nonisolated final class CaptureEngine: NSObject,
                 UserDefaults.standard.set(true, forKey: "frameline.scaleDisabled")
             }
 
-            print("FRAMELINE ANALYSIS: frames were \(width)x\(height), retrying (unscaled: \(self.analysisUnscaled))")
+            print("STILLARC ANALYSIS: frames were \(width)x\(height), retrying (unscaled: \(self.analysisUnscaled))")
 
             self.analysisApplied = (-1, -1)
             self.refreshAnalysisSettings()
@@ -5128,7 +5128,7 @@ nonisolated final class CaptureEngine: NSObject,
         )
 
         print("""
-        FRAMELINE RECORDING (asset writer)
+        STILLARC RECORDING (asset writer)
         Codec: \(codec.title)
         Resolution: \(size.width)x\(size.height)
         Frame rate: \(fps)
@@ -5431,7 +5431,7 @@ nonisolated final class CaptureEngine: NSObject,
                 )
             )
 
-            print("FRAMELINE TIMELAPSE: one frame every \(interval) s")
+            print("STILLARC TIMELAPSE: one frame every \(interval) s")
 
             self.emit(.recording(true))
         }
@@ -5449,7 +5449,7 @@ nonisolated final class CaptureEngine: NSObject,
 
         let url = writer.url
 
-        print("FRAMELINE TIMELAPSE: stopping")
+        print("STILLARC TIMELAPSE: stopping")
 
         // No more frames go to the writer from here.
         writerVideoOutput.setSampleBufferDelegate(nil, queue: nil)
@@ -5458,7 +5458,7 @@ nonisolated final class CaptureEngine: NSObject,
             self?.queue.async {
                 guard let self else { return }
 
-                print("FRAMELINE TIMELAPSE: file closed, \(frames) frames")
+                print("STILLARC TIMELAPSE: file closed, \(frames) frames")
 
                 self.timelapseStopping = false
                 self.setTimelapse(nil)
@@ -5471,14 +5471,14 @@ nonisolated final class CaptureEngine: NSObject,
 
                 self.session.commitConfiguration()
 
-                print("FRAMELINE TIMELAPSE: camera restored")
+                print("STILLARC TIMELAPSE: camera restored")
 
                 self.syncAnalysisOutput()
 
                 self.emit(.recording(false))
 
                 if success {
-                    print("FRAMELINE TIMELAPSE: saved \(frames) frames")
+                    print("STILLARC TIMELAPSE: saved \(frames) frames")
 
                     self.emit(.movie(primary: url, secondary: nil, kind: .none))
                 } else {
@@ -5576,7 +5576,7 @@ nonisolated final class CaptureEngine: NSObject,
             return true
         }
 
-        print("FRAMELINE MONITOR: a frame took too long and was skipped.")
+        print("STILLARC MONITOR: a frame took too long and was skipped.")
         return false
     }
 
@@ -5665,7 +5665,7 @@ nonisolated final class CaptureEngine: NSObject,
 
         if edges != monitorEdges {
             monitorEdges = edges
-            print("FRAMELINE MONITOR: empty edges left \(edges.l), right \(edges.r), top \(edges.t), bottom \(edges.b), format \(CVPixelBufferGetPixelFormatType(source)), \(CVPixelBufferGetWidth(source))x\(CVPixelBufferGetHeight(source))")
+            print("STILLARC MONITOR: empty edges left \(edges.l), right \(edges.r), top \(edges.t), bottom \(edges.b), format \(CVPixelBufferGetPixelFormatType(source)), \(CVPixelBufferGetWidth(source))x\(CVPixelBufferGetHeight(source))")
         }
 
         // Analysis frames arrive unmirrored. The front preview is mirrored
@@ -6059,7 +6059,7 @@ nonisolated enum AspectMovie {
         do {
             return try await run(from: url, viewRect: viewRect, viewRatio: viewRatio)
         } catch {
-            print("FRAMELINE ASPECT CROP ERROR: \(error.localizedDescription)")
+            print("STILLARC ASPECT CROP ERROR: \(error.localizedDescription)")
             return nil
         }
     }
@@ -6207,7 +6207,7 @@ nonisolated enum AspectMovie {
 
         // Writer.
         let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FrameLine-Crop-\(UUID().uuidString).mov")
+            .appendingPathComponent("Stillarc-Crop-\(UUID().uuidString).mov")
 
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
 
@@ -6245,11 +6245,11 @@ nonisolated enum AspectMovie {
             settings.removeValue(forKey: AVVideoColorPropertiesKey)
 
             if writer.canApply(outputSettings: settings, forMediaType: .video) == false {
-                print("FRAMELINE ASPECT CROP: the writer rejects \(codecString) settings.")
+                print("STILLARC ASPECT CROP: the writer rejects \(codecString) settings.")
                 return nil
             }
 
-            print("FRAMELINE ASPECT CROP: colour tags could not be carried over.")
+            print("STILLARC ASPECT CROP: colour tags could not be carried over.")
         }
 
         let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
@@ -6276,7 +6276,7 @@ nonisolated enum AspectMovie {
         }
 
         guard reader.startReading(), writer.startWriting() else {
-            print("FRAMELINE ASPECT CROP: could not start. \(String(describing: writer.error))")
+            print("STILLARC ASPECT CROP: could not start. \(String(describing: writer.error))")
             return nil
         }
 
@@ -6286,12 +6286,12 @@ nonisolated enum AspectMovie {
         var copiers: [SampleCopier] = []
 
         copiers.append(
-            SampleCopier(input: videoInput, output: videoOutput, queue: DispatchQueue(label: "frameliner.crop.video"), group: group)
+            SampleCopier(input: videoInput, output: videoOutput, queue: DispatchQueue(label: "stillarc.crop.video"), group: group)
         )
 
         if let audioInput, let audioOutput {
             copiers.append(
-                SampleCopier(input: audioInput, output: audioOutput, queue: DispatchQueue(label: "frameliner.crop.audio"), group: group)
+                SampleCopier(input: audioInput, output: audioOutput, queue: DispatchQueue(label: "stillarc.crop.audio"), group: group)
             )
         }
 
@@ -6308,12 +6308,12 @@ nonisolated enum AspectMovie {
         withExtendedLifetime(copiers) {}
 
         guard writer.status == .completed, reader.status == .completed else {
-            print("FRAMELINE ASPECT CROP FAILED: \(String(describing: writer.error ?? reader.error))")
+            print("STILLARC ASPECT CROP FAILED: \(String(describing: writer.error ?? reader.error))")
             try? FileManager.default.removeItem(at: outputURL)
             return nil
         }
 
-        print("FRAMELINE ASPECT CROP: \(Int(outW))x\(Int(outH)) \(codecString)")
+        print("STILLARC ASPECT CROP: \(Int(outW))x\(Int(outH)) \(codecString)")
 
         return outputURL
     }
@@ -6386,7 +6386,7 @@ nonisolated enum LUTMonitor {
             } else if bytes == cells * 4 || bytes == cells * 3 {
                 floats = data.map { Float($0) / 255 }
             } else {
-                print("FRAMELINE LUT: \(bytes) bytes does not fit a \(size) cube")
+                print("STILLARC LUT: \(bytes) bytes does not fit a \(size) cube")
                 return nil
             }
         } else if let array = value as? [Float] {
@@ -6398,7 +6398,7 @@ nonisolated enum LUTMonitor {
         } else if let array = value as? [SIMD4<Float>] {
             floats = array.flatMap { [$0.x, $0.y, $0.z, $0.w] }
         } else {
-            print("FRAMELINE LUT: unsupported table type \(type(of: value))")
+            print("STILLARC LUT: unsupported table type \(type(of: value))")
             return nil
         }
 
@@ -6417,7 +6417,7 @@ nonisolated enum LUTMonitor {
         }
 
         guard floats.count == cells * 4 else {
-            print("FRAMELINE LUT: expected \(cells * 4) values, found \(floats.count)")
+            print("STILLARC LUT: expected \(cells * 4) values, found \(floats.count)")
             return nil
         }
 
@@ -6480,7 +6480,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
         guard let writer, let videoInput, writer.status == .writing else {
             if writer?.status == .failed {
                 failed = true
-                print("FRAMELINE WRITER: failed while recording. \(String(describing: writer?.error))")
+                print("STILLARC WRITER: failed while recording. \(String(describing: writer?.error))")
             }
 
             return
@@ -6489,7 +6489,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
         if videoInput.isReadyForMoreMediaData {
             if videoInput.append(sample) == false {
                 failed = true
-                print("FRAMELINE WRITER: video append failed. \(String(describing: writer.error))")
+                print("STILLARC WRITER: video append failed. \(String(describing: writer.error))")
             } else {
                 framesWritten += 1
             }
@@ -6527,7 +6527,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
         lock.unlock()
 
         guard let writer, writer.status == .writing, didFail == false else {
-            print("FRAMELINE WRITER: not finished. status \(String(describing: writer?.status.rawValue)), error \(String(describing: writer?.error))")
+            print("STILLARC WRITER: not finished. status \(String(describing: writer?.status.rawValue)), error \(String(describing: writer?.error))")
             writer?.cancelWriting()
             completion(false)
             return
@@ -6538,7 +6538,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
 
         writer.finishWriting {
             if writer.status != .completed {
-                print("FRAMELINE WRITER: finish failed. \(String(describing: writer.error))")
+                print("STILLARC WRITER: finish failed. \(String(describing: writer.error))")
             }
 
             completion(writer.status == .completed)
@@ -6562,7 +6562,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
         let matrix = extensions?[kCMFormatDescriptionExtension_YCbCrMatrix as String] as? String
 
         guard let newWriter = try? AVAssetWriter(outputURL: url, fileType: .mov) else {
-            print("FRAMELINE WRITER: could not create the file at \(url.lastPathComponent).")
+            print("STILLARC WRITER: could not create the file at \(url.lastPathComponent).")
             return false
         }
 
@@ -6612,14 +6612,14 @@ nonisolated final class LogWriter: @unchecked Sendable {
         if newWriter.canApply(outputSettings: settings, forMediaType: .video) == false {
             settings.removeValue(forKey: AVVideoColorPropertiesKey)
 
-            print("FRAMELINE WRITER: colour tags rejected, retrying without them.")
+            print("STILLARC WRITER: colour tags rejected, retrying without them.")
 
             if newWriter.canApply(outputSettings: settings, forMediaType: .video) == false {
                 compression.removeValue(forKey: AVVideoProfileLevelKey)
                 settings[AVVideoCompressionPropertiesKey] = compression
 
                 guard newWriter.canApply(outputSettings: settings, forMediaType: .video) else {
-                    print("FRAMELINE WRITER: HEVC settings rejected.")
+                    print("STILLARC WRITER: HEVC settings rejected.")
                     return false
                 }
             }
@@ -6629,7 +6629,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
         video.expectsMediaDataInRealTime = true
 
         guard newWriter.canAdd(video) else {
-            print("FRAMELINE WRITER: the video input was rejected.")
+            print("STILLARC WRITER: the video input was rejected.")
             return false
         }
 
@@ -6646,7 +6646,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
         }
 
         guard newWriter.startWriting() else {
-            print("FRAMELINE WRITER: could not start. \(String(describing: newWriter.error))")
+            print("STILLARC WRITER: could not start. \(String(describing: newWriter.error))")
             return false
         }
 
@@ -6658,7 +6658,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
         videoInput = video
         startTime = start
 
-        print("FRAMELINE WRITER: started \(width)x\(height) \(codec), source format \(sourceFormat), \(is422 ? "4:2:2" : "4:2:0"), transfer \(transfer ?? "untagged")")
+        print("STILLARC WRITER: started \(width)x\(height) \(codec), source format \(sourceFormat), \(is422 ? "4:2:2" : "4:2:0"), transfer \(transfer ?? "untagged")")
 
         return true
     }
@@ -6738,7 +6738,7 @@ nonisolated final class TimelapseWriter: @unchecked Sendable {
 
         guard let retimed, input.append(retimed) else {
             failed = true
-            print("FRAMELINE TIMELAPSE: append failed. \(String(describing: writer.error))")
+            print("STILLARC TIMELAPSE: append failed. \(String(describing: writer.error))")
             return
         }
 
@@ -6813,7 +6813,7 @@ nonisolated final class TimelapseWriter: @unchecked Sendable {
         ]
 
         guard newWriter.canApply(outputSettings: settings, forMediaType: .video) else {
-            print("FRAMELINE TIMELAPSE: HEVC settings rejected.")
+            print("STILLARC TIMELAPSE: HEVC settings rejected.")
             return false
         }
 
@@ -6824,7 +6824,7 @@ nonisolated final class TimelapseWriter: @unchecked Sendable {
         newWriter.add(video)
 
         guard newWriter.startWriting() else {
-            print("FRAMELINE TIMELAPSE: could not start. \(String(describing: newWriter.error))")
+            print("STILLARC TIMELAPSE: could not start. \(String(describing: newWriter.error))")
             return false
         }
 
@@ -6833,7 +6833,7 @@ nonisolated final class TimelapseWriter: @unchecked Sendable {
         writer = newWriter
         input = video
 
-        print("FRAMELINE TIMELAPSE: started \(width)x\(height)")
+        print("STILLARC TIMELAPSE: started \(width)x\(height)")
 
         return true
     }

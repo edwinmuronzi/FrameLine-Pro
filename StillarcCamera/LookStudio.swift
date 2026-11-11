@@ -688,7 +688,7 @@ struct LookManager: View {
                         }
                         .contextMenu {
                             Button("Copy launch link", systemImage: "link") {
-                                UIPasteboard.general.string = "framelinepro://preset/\(preset.id.uuidString)"
+                                UIPasteboard.general.string = "stillarc://preset/\(preset.id.uuidString)"
                                 notice = "Launch link copied. Paste it into an Open URLs action in Shortcuts."
                             }
                         }
@@ -730,11 +730,11 @@ struct LookManager: View {
                         }
                         notice = "Imported \(incoming.count) presets. Install any referenced custom styles and LUTs separately."
                     } catch {
-                        notice = "This file could not be imported as FrameLine Pro presets."
+                        notice = "This file could not be imported as Stillarc Camera presets."
                     }
                 }
             }
-            .fileExporter(isPresented: $exportingPresets, document: PresetFile(presets: store.shootingPresets), contentType: .json, defaultFilename: "FrameLine Pro Presets") { result in
+            .fileExporter(isPresented: $exportingPresets, document: PresetFile(presets: store.shootingPresets), contentType: .json, defaultFilename: "Stillarc Camera Presets") { result in
                 if case .failure = result { notice = "The presets could not be exported." }
             }
             .alert("Shooting presets", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {

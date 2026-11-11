@@ -13,13 +13,13 @@
   "files": [
     {
       "kind": "folder",
-      "path": "FrameLinePro",
+      "path": "StillarcCamera",
       "target-membership": [
-        "FrameLinePro",
+        "StillarcCamera",
       ],
       "membership-exceptions": [
         {
-          "target": "FrameLinePro",
+          "target": "StillarcCamera",
           "exclusions": [
             "Info.plist",
           ],
@@ -29,9 +29,9 @@
       "kind": "group",
       "name": "Products",
       "children": [
-        { "path": "<PRODUCTS>/FrameLinePro.app", "id": "000000000000000000000120", "type": "wrapper.application", "index": false },
-        { "path": "<PRODUCTS>/LockCapture.appex", "id": "187A9BC930A2F8010039FCEE", "type": "wrapper.extensionkit-extension", "index": false, "target-membership": [ { "build-phase": "FrameLinePro/copy/Embed Lock Camera", "header-preservation": "remove-on-copy" } ] },
-        { "path": "<PRODUCTS>/CameraControlWidget.appex", "id": "187E65E530A2F802004E9569", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "FrameLinePro/copy/Embed Camera Control", "header-preservation": "remove-on-copy" } ] },
+        { "path": "<PRODUCTS>/StillarcCamera.app", "id": "000000000000000000000120", "type": "wrapper.application", "index": false },
+        { "path": "<PRODUCTS>/LockCapture.appex", "id": "187A9BC930A2F8010039FCEE", "type": "wrapper.extensionkit-extension", "index": false, "target-membership": [ { "build-phase": "StillarcCamera/copy/Embed Lock Camera", "header-preservation": "remove-on-copy" } ] },
+        { "path": "<PRODUCTS>/CameraControlWidget.appex", "id": "187E65E530A2F802004E9569", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "StillarcCamera/copy/Embed Camera Control", "header-preservation": "remove-on-copy" } ] },
       ],
     }, {
       "kind": "folder",
@@ -62,13 +62,13 @@
         },
       ],
     },
-    { "kind": "folder", "path": "CaptureIntents", "target-membership": [ "CameraControlWidget", "FrameLinePro", "LockCapture" ] },
+    { "kind": "folder", "path": "CaptureIntents", "target-membership": [ "CameraControlWidget", "StillarcCamera", "LockCapture" ] },
   ],
   "targets": [
     {
-      "name": "FrameLinePro",
+      "name": "StillarcCamera",
       "id": "000000000000000100000000",
-      "product": "Products/FrameLinePro.app",
+      "product": "Products/StillarcCamera.app",
       "product-type": "application",
       "dependencies": [
         "LockCapture",
@@ -93,18 +93,18 @@
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
         "ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS": "YES",
         "CODE_SIGN_STYLE": "Automatic",
-        "CURRENT_PROJECT_VERSION": "16",
+        "CURRENT_PROJECT_VERSION": "17",
         "DEVELOPMENT_TEAM": "VPJA9LZZCS",
         "ENABLE_APP_SANDBOX": "YES",
         "ENABLE_PREVIEWS": "YES",
         "ENABLE_USER_SELECTED_FILES": "readonly",
         "GENERATE_INFOPLIST_FILE": "YES",
-        "INFOPLIST_FILE": "FrameLinePro/Info.plist",
-        "INFOPLIST_KEY_CFBundleDisplayName": "FrameLine Pro",
+        "INFOPLIST_FILE": "StillarcCamera/Info.plist",
+        "INFOPLIST_KEY_CFBundleDisplayName": "Stillarc Camera",
         "INFOPLIST_KEY_LSApplicationCategoryType": "public.app-category.photography",
-        "INFOPLIST_KEY_NSCameraUsageDescription": "FrameLine Pro uses the camera for photos, video, rangefinder frame lines, and dual-camera recording.",
-        "INFOPLIST_KEY_NSMicrophoneUsageDescription": "FrameLine Pro uses the microphone so video recordings include sound.",
-        "INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription": "FrameLine Pro saves full-frame photos, frame-line crops, RAW files, and videos to your library.",
+        "INFOPLIST_KEY_NSCameraUsageDescription": "Stillarc Camera uses the camera for photos, video, rangefinder frame lines, and dual-camera recording.",
+        "INFOPLIST_KEY_NSMicrophoneUsageDescription": "Stillarc Camera uses the microphone so video recordings include sound.",
+        "INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription": "Stillarc Camera saves full-frame photos, frame-line crops, RAW files, and videos to your library.",
         "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]": "YES",
         "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]": "YES",
         "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]": "YES",
@@ -118,7 +118,8 @@
         "INFOPLIST_KEY_UIUserInterfaceStyle": "Dark",
         "LD_RUNPATH_SEARCH_PATHS": "@executable_path/Frameworks",
         "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "@executable_path/../Frameworks",
-        "MARKETING_VERSION": "1.2.13",
+        "MARKETING_VERSION": "1.3.0",
+        // Existing installation identity preserves captures and preferences.
         "PRODUCT_BUNDLE_IDENTIFIER": "com.edwinmuronzipersonalteam.FrameLinePro",
         "PRODUCT_NAME": "$(TARGET_NAME)",
         "REGISTER_APP_GROUPS": "YES",
@@ -145,18 +146,19 @@
       "build-settings": {
         "APPLICATION_EXTENSION_API_ONLY": "YES",
         "CODE_SIGN_STYLE": "Automatic",
-        "CURRENT_PROJECT_VERSION": "16",
+        "CURRENT_PROJECT_VERSION": "17",
         "DEVELOPMENT_TEAM": "VPJA9LZZCS",
         "GENERATE_INFOPLIST_FILE": "YES",
         "INFOPLIST_FILE": "LockCapture/Info.plist",
-        "INFOPLIST_KEY_CFBundleDisplayName": "FrameLine Camera",
+        "INFOPLIST_KEY_CFBundleDisplayName": "Stillarc Camera",
         "IPHONEOS_DEPLOYMENT_TARGET": "26.0",
         "LD_RUNPATH_SEARCH_PATHS": [
           "$(inherited)",
           "@executable_path/Frameworks",
           "@executable_path/../../Frameworks",
         ],
-        "MARKETING_VERSION": "1.2.13",
+        "MARKETING_VERSION": "1.3.0",
+        // Existing installation identity preserves captures and preferences.
         "PRODUCT_BUNDLE_IDENTIFIER": "com.edwinmuronzipersonalteam.FrameLinePro.LockCapture",
         "PRODUCT_NAME": "$(TARGET_NAME)",
         "SKIP_INSTALL": "YES",
@@ -177,18 +179,19 @@
       "build-settings": {
         "APPLICATION_EXTENSION_API_ONLY": "YES",
         "CODE_SIGN_STYLE": "Automatic",
-        "CURRENT_PROJECT_VERSION": "16",
+        "CURRENT_PROJECT_VERSION": "17",
         "DEVELOPMENT_TEAM": "VPJA9LZZCS",
         "GENERATE_INFOPLIST_FILE": "YES",
         "INFOPLIST_FILE": "CameraControlWidget/Info.plist",
-        "INFOPLIST_KEY_CFBundleDisplayName": "FrameLine Camera",
+        "INFOPLIST_KEY_CFBundleDisplayName": "Stillarc Camera",
         "IPHONEOS_DEPLOYMENT_TARGET": "26.0",
         "LD_RUNPATH_SEARCH_PATHS": [
           "$(inherited)",
           "@executable_path/Frameworks",
           "@executable_path/../../Frameworks",
         ],
-        "MARKETING_VERSION": "1.2.13",
+        "MARKETING_VERSION": "1.3.0",
+        // Existing installation identity preserves captures and preferences.
         "PRODUCT_BUNDLE_IDENTIFIER": "com.edwinmuronzipersonalteam.FrameLinePro.CameraControlWidget",
         "PRODUCT_NAME": "$(TARGET_NAME)",
         "SKIP_INSTALL": "YES",

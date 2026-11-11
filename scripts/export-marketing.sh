@@ -6,14 +6,14 @@ task_simulator="${1:-}"
 if [[ -z "$task_simulator" ]]; then
   task_simulator="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; rows=[d for group in json.load(sys.stdin)["devices"].values() for d in group if d.get("isAvailable") and d["name"].startswith("iPhone")]; rows.sort(key=lambda d:d["state"]!="Booted"); print(rows[0]["udid"])')"
 fi
-task_build="${FRAMELINE_MARKETING_BUILD:-${TMPDIR:-/tmp}/FrameLineProMarketingBuild}"
+task_build="${STILLARC_MARKETING_BUILD:-${TMPDIR:-/tmp}/StillarcCameraMarketingBuild}"
 task_shots="$task_build/NativeShots"
 mkdir -p "$task_shots"
 xcrun simctl boot "$task_simulator" 2>/dev/null || true
 xcrun simctl bootstatus "$task_simulator" -b
-xcodebuild -project "$task_root/FrameLinePro.xcodeproj" -scheme MyApp -configuration Debug \
+xcodebuild -project "$task_root/StillarcCamera.xcodeproj" -scheme StillarcCamera -configuration Debug \
   -destination "platform=iOS Simulator,id=$task_simulator" -derivedDataPath "$task_build" CODE_SIGNING_ALLOWED=NO build > "$task_build/build.log" 2>&1
-xcrun simctl install "$task_simulator" "$task_build/Build/Products/Debug-iphonesimulator/FrameLinePro.app"
+xcrun simctl install "$task_simulator" "$task_build/Build/Products/Debug-iphonesimulator/StillarcCamera.app"
 xcrun simctl status_bar "$task_simulator" override --time '9:41' --batteryState charged --batteryLevel 100
 for task_index in {1..10}; do
   task_number="$(printf '%02d' "$task_index")"
@@ -41,7 +41,7 @@ done
 for task_file in "$task_shots"/camera-*.png; do
   task_name="$(basename "$task_file" .png)"
   task_number="${task_name#camera-}"
-  task_asset="$task_root/FrameLinePro/Assets.xcassets/Screen$task_number.imageset"
+  task_asset="$task_root/StillarcCamera/Assets.xcassets/Screen$task_number.imageset"
   mkdir -p "$task_asset"
   sips -s format jpeg -s formatOptions 88 -Z 1280 "$task_file" --out "$task_asset/screen.jpg" >/dev/null
   cat > "$task_asset/Contents.json" <<'JSON'

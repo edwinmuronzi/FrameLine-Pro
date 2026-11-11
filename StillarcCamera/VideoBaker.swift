@@ -27,7 +27,7 @@ nonisolated enum VideoBaker {
             return url
         }
 
-        print("FRAMELINE BAKE: 10-bit path failed, using the 8-bit export.")
+        print("STILLARC BAKE: 10-bit path failed, using the 8-bit export.")
 
         return await bakeEightBit(
             source: source,
@@ -87,7 +87,7 @@ nonisolated enum VideoBaker {
                 }
             )
         } catch {
-            print("FRAMELINE BAKE: could not build the composition. \(error)")
+            print("STILLARC BAKE: could not build the composition. \(error)")
             return nil
         }
     }
@@ -224,12 +224,12 @@ nonisolated enum VideoBaker {
             }
 
             guard reader.startReading() else {
-                print("FRAMELINE BAKE: reader failed. \(String(describing: reader.error))")
+                print("STILLARC BAKE: reader failed. \(String(describing: reader.error))")
                 return nil
             }
 
             guard writer.startWriting() else {
-                print("FRAMELINE BAKE: writer failed. \(String(describing: writer.error))")
+                print("STILLARC BAKE: writer failed. \(String(describing: writer.error))")
                 reader.cancelReading()
                 return nil
             }
@@ -240,7 +240,7 @@ nonisolated enum VideoBaker {
             let group = DispatchGroup()
 
             for (index, pump) in pumps.enumerated() {
-                let queue = DispatchQueue(label: "frameline.bake.\(index)")
+                let queue = DispatchQueue(label: "stillarc.bake.\(index)")
 
                 group.enter()
 
@@ -268,7 +268,7 @@ nonisolated enum VideoBaker {
             }
 
             guard reader.status == .completed else {
-                print("FRAMELINE BAKE: reading stopped. \(String(describing: reader.error))")
+                print("STILLARC BAKE: reading stopped. \(String(describing: reader.error))")
                 writer.cancelWriting()
                 try? FileManager.default.removeItem(at: output)
                 return nil
@@ -277,14 +277,14 @@ nonisolated enum VideoBaker {
             await writer.finishWriting()
 
             guard writer.status == .completed else {
-                print("FRAMELINE BAKE: writing failed. \(String(describing: writer.error))")
+                print("STILLARC BAKE: writing failed. \(String(describing: writer.error))")
                 try? FileManager.default.removeItem(at: output)
                 return nil
             }
 
             return output
         } catch {
-            print("FRAMELINE BAKE: \(error)")
+            print("STILLARC BAKE: \(error)")
             try? FileManager.default.removeItem(at: output)
             return nil
         }
@@ -342,7 +342,7 @@ nonisolated enum VideoBaker {
             try await session.export(to: output, as: .mov)
             return output
         } catch {
-            print("FRAMELINE BAKE: \(error)")
+            print("STILLARC BAKE: \(error)")
             return nil
         }
     }
