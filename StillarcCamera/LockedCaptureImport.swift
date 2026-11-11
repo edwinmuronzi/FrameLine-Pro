@@ -35,9 +35,12 @@ extension CameraStore {
                 var item = CaptureItem(fullImage: result.full, cropImage: nil, movieURL: nil, storiesURL: nil, rawURL: nil, detail: "Lock Screen photo · original", simulated: false, mode: .photo)
                 item.id = id; item.fullPhotoURL = url
                 item.date = (try? file.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
+                prepareCaptureStorage(id:id,keepInApp:saveInApp)
                 captures.append(item); trimGalleryPreviews(); captures.sort { $0.date > $1.date }
                 persistLibrary()
                 if await librarySaveTask?.value != true { complete = false }
+                let save = saveToPhotos ? saveStillFiles([url],raw:nil) : nil
+                completeCaptureStorage(id:id,keepInApp:saveInApp,saves:[save].compactMap { $0 })
             }
             if complete { try? await LockedCameraCaptureManager.shared.invalidateSessionContent(at: directory) }
         }

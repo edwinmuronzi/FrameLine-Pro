@@ -1463,6 +1463,15 @@ nonisolated final class CaptureEngine: NSObject,
     #endif
 
     #if DEBUG
+    func verifyActivateLog(_ profile: LogProfile) async -> Bool {
+        await withCheckedContinuation { continuation in
+            queue.async { [weak self] in
+                guard let self, let device = self.videoDevice,
+                      device.formats.contains(where:{ $0.supportedColorSpaces.contains(self.colorSpace(for:profile)) }) else { continuation.resume(returning:false); return }
+                continuation.resume(returning:self.applyLog(profile))
+            }
+        }
+    }
     private var photoCombinationChecks: [UUID: String] = [:]
     private var presetPhotoChecks: [UUID: CheckedContinuation<Bool,Never>] = [:]
     func verifyPresetPhoto(raw: Bool, flash: FlashChoice, format: PhotoFormat, nativeRaw: Bool) async -> Bool {
@@ -3769,11 +3778,27 @@ nonisolated final class CaptureEngine: NSObject,
         settings: RecordingSettings, codec: RecordingCodec? = nil
     ) {
         queue.async { [weak self] in
-            self?.previewCodec = codec
-            self?.cameraAudio.setMetering(video)
-            self?.previewVideo = video
-            self?.previewLog = log
-            self?.previewSettings = settings
+            guard let self else { return }
+            let photoTransition = !video && (self.previewVideo || self.previewLog != .off)
+            self.previewCodec = codec
+            self.cameraAudio.setMetering(video)
+            self.previewVideo = video
+            self.previewLog = video ? log : .off
+            self.previewSettings = settings
+            if photoTransition, !self.movieOutput.isRecording, self.currentLiveWriter() == nil,
+               let device = self.videoDevice {
+                // Return the existing connection to the photo pipeline. Do not tear
+                // down/re-add inputs merely to leave a Log video format.
+                self.session.beginConfiguration()
+                self.session.automaticallyConfiguresCaptureDeviceForWideColor = true
+                if self.session.canSetSessionPreset(.photo) { self.session.sessionPreset = .photo }
+                if device.activeFormat.supportedColorSpaces.contains(.sRGB) {
+                    self.lock(device) { device.activeColorSpace = .sRGB }
+                }
+                self.synchronizePhotoDimensions()
+                self.session.commitConfiguration()
+                self.publishCaps()
+            }
         }
     }
 

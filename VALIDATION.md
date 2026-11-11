@@ -1,5 +1,18 @@
 # Stillarc Camera validation
 
+## 1.3.3 — Log/photo transition, storage policy and Develop preview
+
+On the **black iPhone 16 Pro**, activating supported Apple Log then immediately applying a photo preset returned the UI to Standard and delivered a processed photo. Legacy photo-preset Log/Log 2 fields also normalized to Standard without losing preset matching, and both shutter attempts succeeded. **Actual Apple Log 2 capture is not supported on this 16 Pro**; its Log 2 check validates metadata/state normalization, not that hardware format. The transition restores the existing input connection to the photo preset and sRGB, without removing/re-adding camera inputs.
+
+Isolated storage tests passed all 32 age-boundary cases, save-destination invariants, removing a private app copy after a mocked successful Photos result, retaining it after a mocked failure, excluding recovery copies from age cleanup, and recovery-flag serialization. No real Photos assets or current user gallery items were deleted for these checks. Actual Photos permission/low-storage failures were not deliberately induced. App saving remains on and automatic deletion defaults to Never; enabling a policy applies to existing and future app copies by capture date. Cleanup waits during gallery review/editing and never deletes Photos assets. Pending Photos-only saves carry a persisted recovery flag so an interrupted save cannot silently discard the only confirmed copy.
+
+Develop uses an explicit display-encoded working space for camera-calibrated looks, shared by preview and saved edits. Twelve sRGB swatch/look fixtures passed against the camera composition reference, with maximum measured mean-channel difference **0.00293** on a 0–1 encoded scale. Preview/export matching, photo geometry/save checks and a synthetic HDR gain-map fixture passed. These are targeted fixtures, not a color-chart certification or all camera/gamut coverage. The enlarged preview was visually inspected in the simulator. Its 1600-pixel input bound is independent of full-resolution output.
+
+The final 16 Pro interaction sweep completed **107 renders for 120 changing recipes**, with **16.75 ms render-completion p95**, **zero idle redraws**, and **nominal thermal state at start and end**. Intermediate states coalesce; this does not establish presented fps, touch-to-display latency, battery energy or physical temperature. A separate private real RAW capture decoded successfully into the new **1200×1600 floating-point preview cache**. It was not sent to Photos; the private test capture was removed afterward. This smoke test does not validate every RAW camera or all highlight-recovery scenarios.
+
+The Debug diagnostics and normal production Release archive built successfully. [Reports and enlarged preview](Validation/1.3.3) are retained. Production diagnostics are compiled out. Strict signature verification passed with keychain access; Camera 1.3.3 (build 20) was installed and launched normally on both the black 16 Pro and 17 Pro.
+
+
 ## 1.3.2 — preset capture, LUT Off and ordinary-video safe zones
 
 The 1.3.1 crash reports from the 17 Pro show an Objective-C exception in AVCapturePhotoOutput submission. Requests now synchronize the output maximum with the active lens format and bound per-shot quality to the output limit. A narrow Objective-C boundary reports rejected requests and releases the pending delegate/context instead of terminating the app. The crash report did not include the original exception reason; do not claim the precise original invalid argument was established.

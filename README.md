@@ -71,9 +71,19 @@ A/B marks remember focus distances. They do **not** track a person who moves clo
 
 ### A gallery you can return to
 
-Captures, original files and edit recipes stay in the app after closing it. Open a photo and choose **Develop photo** to change the look, brightness, color strength or warmth. The full-resolution original is retained; edits are separate. The preview stays visible above the scrolling controls. When a full-frame original and RAW are available, enable **Develop from RAW** to adjust exposure in the digital negative before rendering. A smaller draft preview keeps editing responsive; the saved edit uses the full RAW. Frame-only captures can still be edited from their original crop and their DNG shared separately. Reopen Develop photo to revise the saved recipe, or switch to Original in the viewer. Sharing sends the displayed version at its saved size. Saving an edit does not silently overwrite the copy already in Photos.
+With Save captures in app enabled, captures, original files and edit recipes stay in the app after closing it, subject to the cleanup policy. Open a photo and choose **Develop photo** to change the look, brightness, color strength or warmth. The full-resolution original is retained; edits are separate. The larger preview stays visible above the scrolling controls. Preview and save share the same look working space, with HDR display on supported screens. When a full-frame original and RAW are available, enable **Develop from RAW** to work from the digital negative. A bounded floating-point preview keeps editing responsive without first clipping highlights into a JPEG; saving uses the full RAW. Frame-only captures can still be edited from their original crop and their DNG shared separately. Reopen Develop photo to revise the saved recipe, or switch to Original in the viewer. Sharing sends the displayed version at its saved size. Saving an edit does not silently overwrite the copy already in Photos.
 
-The gallery is local to this installation, not an online backup. Deleting a capture removes its app files; copies already saved to Photos remain there. Locked-screen captures transfer into the app gallery after unlocking; export/share them from there when needed.
+The gallery is local to this installation, not an online backup. Deleting a capture removes its app files; copies already saved to Photos remain there. Locked-screen captures transfer after unlocking and follow the same app/Photos destination settings.
+
+### Choose where captures stay
+
+Open **Settings → Files**:
+
+- **Save captures in app:** keep originals, edits and video companions in the local gallery. Turning it off applies to new captures; their app copies are removed only after saving to Photos succeeds. Existing gallery items remain until you delete them or a cleanup policy applies.
+- **Save to Photos:** independently save your finished output to Apple Photos. At least one destination stays enabled.
+- **Automatically delete app copies:** Never (default), after 1 day, 7 days or 30 days, measured from capture time. The policy applies to existing and future app copies and runs when you open/return to the app or finish browsing the gallery. It waits while browsing/editing and never deletes Apple Photos assets.
+
+If a Photos save fails or cannot be confirmed, a protected recovery copy stays in the app instead of being automatically removed. Manually export or delete it from the gallery. Cleanup does not run as an exact background alarm. Defaults preserve the existing gallery: in-app saving on, automatic deletion Never.
 
 ### Frame, straighten and adjust depth
 
@@ -144,7 +154,7 @@ Long-press your Lock Screen, choose **Customize**, replace a bottom control and 
 - Repeated shutter presses use independent capture requests. Grading and thumbnail creation happen away from the interface, with bounded processing to protect memory.
 - Automatic exposure when you want simplicity; manual controls when you need precision.
 - Live camera styles, custom look recipes, and optional LUT baking.
-- Full-frame, framed crop, or both; full-resolution files remain available from the gallery.
+- Full-frame, framed crop, or both; full-resolution files remain available while retained in the gallery.
 - Countdown, exposure bracketing, still timelapse, grid, level and focus magnifier.
 
 HEIF Max, RAW, flash, low-light processing and bracketing take longer than ordinary stills. Responsive/zero-shutter-lag capture is enabled only where supported; timing remains dependent on the camera, format and light. There is no claim of unlimited full-resolution burst capture.
@@ -159,6 +169,7 @@ HEIF Max, RAW, flash, low-light processing and bracketing take longer than ordin
 - Microphone selection, audio level/clipping indication and headphone monitoring.
 - Torch control on supported cameras, including during recording.
 - Clean recording controls, clip counters and running timecode.
+- Loading a Photo/Rangefinder preset switches to that mode and automatically returns Log/Log 2 to Standard, ready for the shutter. Saved photo presets cannot reactivate video-only Log.
 - **9:16 in ordinary Video:** choose 9:16 with the aspect control, then enable **Fn → Shooting tools → Safe zones & anamorphic → Show reel safe zones**. The clear cutout marks the safer area for faces/text; shaded areas leave room for captions and interface controls. Choose Reel captions or Center action. The saved movie uses the crop; the guide itself is never recorded. These guides are approximate, not platform-exact templates.
 
 ### Slow shutter — motion blur and light trails
@@ -195,11 +206,11 @@ In **Gallery → Develop Photo**, open **Color mix** to shift the hue, intensity
 ### What saves
 
 - Stills without a look/baked LUT save the plain output(s) you selected.
-- With a look or baked LUT, the graded selected output(s) save to Photos; originals remain available in the app’s gallery.
+- With a look or baked LUT, the graded selected output(s) save to Photos; originals remain available when in-app saving is enabled and until its cleanup policy applies.
 - Identical full-frame/crop outputs are not intentionally duplicated.
 - RAW capture also preserves a separate DNG where supported.
 - Dual Shot saves the final two-video pair described above.
-- The gallery and edit recipes persist between launches. Previews load from files as needed; recent in-memory previews are bounded. Share uses full-resolution files. App deletion removes its local gallery, so save important work to Photos or export it; this is not a cloud backup.
+- Retained gallery items and edit recipes persist between launches. Previews load from files as needed; recent in-memory previews are bounded. Share uses full-resolution files. App deletion removes its local gallery, so save important work to Photos or export it; this is not a cloud backup.
 
 ## Tools that stay out of the way
 

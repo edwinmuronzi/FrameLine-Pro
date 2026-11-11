@@ -14,8 +14,11 @@ struct InteractivePhotoPreview: UIViewRepresentable {
         view.framebufferOnly = false; view.isPaused = true; view.enableSetNeedsDisplay = true
         view.isOpaque = true; view.backgroundColor = .black; view.delegate = context.coordinator
         view.contentScaleFactor = min(view.traitCollection.displayScale, 2)
-        view.colorPixelFormat = .bgra8Unorm
-        (view.layer as? CAMetalLayer)?.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
+        view.colorPixelFormat = .rgba16Float
+        if let layer = view.layer as? CAMetalLayer {
+            layer.colorspace = CGColorSpace(name:CGColorSpace.extendedLinearSRGB)
+            layer.wantsExtendedDynamicRangeContent = true
+        }
         return view
     }
     func updateUIView(_ view: MTKView, context: Context) {
@@ -29,7 +32,7 @@ struct InteractivePhotoPreview: UIViewRepresentable {
     @MainActor final class Renderer: NSObject, MTKViewDelegate {
         let device = MTLCreateSystemDefaultDevice()
         lazy var commands = device?.makeCommandQueue()
-        lazy var context = device.map { CIContext(mtlDevice: $0, options: [.cacheIntermediates: false]) }
+        lazy var context = device.map { CIContext(mtlDevice: $0, options:[.cacheIntermediates:false,.workingColorSpace:PhotoDeveloper.workingColorSpace]) }
         var source: CIImage?
         var edit = PhotoEdit()
         var depthMask: CIImage?
@@ -72,7 +75,7 @@ struct InteractivePhotoPreview: UIViewRepresentable {
                 .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
                 .transformed(by: CGAffineTransform(translationX: (size.width - image.extent.width * scale) / 2, y: (size.height - image.extent.height * scale) / 2))
             let frame = placed.composited(over: CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: size)))
-            context.render(frame, to: drawable.texture, commandBuffer: command, bounds: CGRect(origin: .zero, size: size), colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
+            context.render(frame, to: drawable.texture, commandBuffer: command, bounds: CGRect(origin: .zero, size: size), colorSpace: CGColorSpace(name:CGColorSpace.extendedLinearSRGB)!)
             #if DEBUG
             command.addCompletedHandler { _ in EditorPreviewProbe.shared.record((CACurrentMediaTime() - began) * 1000) }
             #endif

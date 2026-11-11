@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "failedSaveKept": true,
+  "recoveryPersistence": true,
+  "destinations": true,
+  "ageCases": 32,
+  "recoveryExcludedFromAgeCleanup": true,
+  "cleanupAfterConfirmedSave": true
+}

@@ -1,0 +1,17 @@
+{
+  "results": [
+    {
+      "standard": true,
+      "supported": true,
+      "profile": "log",
+      "captured": true
+    },
+    {
+      "supported": false,
+      "captured": true,
+      "profile": "log2",
+      "standard": true
+    }
+  ],
+  "passed": true
+}

@@ -105,6 +105,9 @@ nonisolated struct ShootingPreset: Codable, Identifiable, Equatable, Sendable {
         var comparison = other
         comparison.focusLens = comparison.focusLens ?? false
         comparison.naturalPhoto = comparison.naturalPhoto ?? false; comparison.livePhoto = comparison.livePhoto ?? false; comparison.depthPortrait = comparison.depthPortrait ?? false
+        // Legacy photo presets can carry video-only Log metadata. It is inactive.
+        if normalized.mode != "video" { normalized.log = "off" }
+        if comparison.mode != "video" { comparison.log = "off" }
         // Live auto readings may change without the user changing their setup.
         if normalized.isoAuto { normalized.iso = comparison.iso }
         if normalized.shutterAuto { normalized.shutter = comparison.shutter }

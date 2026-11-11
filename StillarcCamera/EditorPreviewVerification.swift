@@ -18,7 +18,7 @@ struct EditorPreviewVerification: View {
     @State private var edit = PhotoEdit(styleID: FilmLook.lineup[1].id)
     private let source: CIImage = {
         let image = CIImage(cgImage: UIImage(named: "Story02")!.cgImage!)
-        return image.transformed(by: CGAffineTransform(scaleX: 1200 / image.extent.width, y: 1200 / image.extent.width))
+        return image.transformed(by: CGAffineTransform(scaleX:1600 / max(image.extent.width,image.extent.height),y:1600 / max(image.extent.width,image.extent.height)))
     }()
     var body: some View {
         VStack {
@@ -31,9 +31,11 @@ struct EditorPreviewVerification: View {
             UIApplication.shared.isIdleTimerDisabled = true
             defer { UIApplication.shared.isIdleTimerDisabled = false }
             try? await Task.sleep(for: .seconds(1))
-            _ = await Task.detached(priority: .userInitiated) { PhotoLabVerification.run() }.value
-            _ = await PhotoLabVerification.verifySave()
-            _ = await Task.detached(priority: .userInitiated) { HDRPhotoVerification.run() }.value
+            let thermalStart = ProcessInfo.processInfo.thermalState.rawValue
+            let color = await Task.detached(priority:.userInitiated) { PhotoPreviewColorVerification.run() }.value
+            let lab = await Task.detached(priority: .userInitiated) { PhotoLabVerification.run() }.value
+            let saved = await PhotoLabVerification.verifySave()
+            let hdr = await Task.detached(priority: .userInitiated) { HDRPhotoVerification.run() }.value
             EditorPreviewProbe.shared.reset()
             for index in 0..<120 {
                 edit.colorMix = [.red: PhotoColorAdjustment(hue: sin(Double(index) / 12) * 20)]
@@ -47,6 +49,9 @@ struct EditorPreviewVerification: View {
             NSLog("EDITOR_PREVIEW_VERIFY %@ requests=120 frames=%ld p95RenderMs=%.1f", frames >= 60 && p95 < 100 ? "PASS" : "FAIL", frames, p95)
             try? await Task.sleep(for: .seconds(5))
             let idleFrames = EditorPreviewProbe.shared.summary().0 - frames
+            let report:[String:Any] = ["passed":color["passed"] as? Bool == true && lab && saved && hdr && frames >= 60 && p95 < 100 && idleFrames == 0,"color":color,"photoLab":lab,"save":saved,"hdr":hdr,"frames":frames,"p95RenderMs":p95,"idleFrames":idleFrames,"thermalStart":thermalStart,"thermalEnd":ProcessInfo.processInfo.thermalState.rawValue]
+            let url = FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("develop-preview-verification.json")
+            if let data = try? JSONSerialization.data(withJSONObject:report,options:.prettyPrinted) { try? data.write(to:url,options:.atomic) }
             NSLog("EDITOR_IDLE_VERIFY %@ idleFrames=%ld thermal=%ld", idleFrames == 0 ? "PASS" : "FAIL", idleFrames, ProcessInfo.processInfo.thermalState.rawValue)
         }
     }

@@ -10,6 +10,8 @@ struct PhotoEditor: View {
     @State private var rawSource: CIImage?
     @State private var depthMask: CIImage?
     @State private var sourceHasHDR = false
+    @State private var standardHDRLoaded: Bool?
+    private struct PreviewSourceChoice: Hashable { var raw:Bool; var hdr:Bool }
     @State private var saving = false
     @State private var framingExpanded = false
     @State private var colorBand = PhotoColorBand.red
@@ -25,7 +27,7 @@ struct PhotoEditor: View {
         NavigationStack {
             GeometryReader { geometry in
                 VStack(spacing: 12) {
-                    preview.frame(height: min(280, geometry.size.height * 0.40)).padding(.horizontal, 20)
+                    preview.frame(height:max(140,min(480,geometry.size.height * 0.56))).padding(.horizontal,12)
                     ScrollView {
                         VStack(spacing: 18) {
                             Text("Your original stays untouched. Change the look now, or come back and change it again later.")
@@ -104,19 +106,21 @@ struct PhotoEditor: View {
                     depthMask = await Task.detached(priority: .userInitiated) { DepthMask.load(url)?.image }.value
                 }
             }
-            .task(id: edit.useRAW) {
+            .task(id:PreviewSourceChoice(raw:edit.useRAW == true,hdr:edit.preserveHDR != false)) {
                 let raw = edit.useRAW == true
-                if raw && rawSource != nil || !raw && standardSource != nil { return }
+                if raw && rawSource != nil || !raw && standardSource != nil && standardHDRLoaded == (edit.preserveHDR != false) { return }
                 guard let url = raw ? item.rawURL : (item.fullPhotoURL ?? item.cropPhotoURL) else { return }
                 loadingRAW = raw
+                let preserveHDR = edit.preserveHDR != false
                 let prepared = await Task.detached(priority: .userInitiated) { () -> (CIImage?, Bool) in
                     guard let data = try? Data(contentsOf: url) else { return (nil, false) }
-                    let decoded = raw ? PhotoDeveloper.rawPreview(data) : data
-                    let image = decoded.flatMap { PreparedStill.thumbnail($0, maxPixel: 1200) }?.cgImage.map { CIImage(cgImage: $0) }
-                    return (image, !raw && HDRPhoto.expanded(data) != nil)
+                    if raw { return (PhotoDeveloper.rawPreviewImage(data),false) }
+                    let hdr = HDRPhoto.expanded(data) != nil
+                    let image = PreparedStill.thumbnail(data,maxPixel:1600,hdr:hdr && preserveHDR)?.cgImage.map { CIImage(cgImage:$0) }
+                    return (image,hdr)
                 }.value
                 guard !Task.isCancelled else { return }
-                if raw { rawSource = prepared.0 } else { standardSource = prepared.0; sourceHasHDR = prepared.1 }
+                if raw { rawSource = prepared.0 } else { standardSource = prepared.0; sourceHasHDR = prepared.1; standardHDRLoaded = preserveHDR }
                 loadingRAW = false
                 if prepared.0 == nil { error = "The preview couldn’t be prepared. Your original is safe." }
             }

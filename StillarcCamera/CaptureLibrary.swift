@@ -31,6 +31,7 @@ nonisolated struct LibraryRecord: Codable, Sendable {
     var gradedReel: String? = nil
     var clip: ClipInfo? = nil
     var depthMask: String? = nil
+    var recoveryCopy: Bool? = nil
 }
 
 actor CaptureLibrary {
@@ -49,7 +50,10 @@ actor CaptureLibrary {
 }
 
 nonisolated enum PhotoDeveloper {
-    static let context = CIContext(options: [.cacheIntermediates: false, .priorityRequestLow: true])
+    // Match the camera look recipes' display-encoded domain, retaining extended
+    // values for HDR. Preview and export must use the same working space.
+    static let workingColorSpace = CGColorSpace(name:CGColorSpace.extendedSRGB)!
+    static let context = CIContext(options:[.cacheIntermediates:false,.priorityRequestLow:true,.workingColorSpace:workingColorSpace])
     static func natural(_ raw: Data) -> Data? {
         guard let filter = CIRAWFilter(imageData: raw, identifierHint: nil) else { return nil }
         filter.isDraftModeEnabled = false
@@ -61,20 +65,26 @@ nonisolated enum PhotoDeveloper {
         guard let image = filter.outputImage else { return nil }
         return encode(image)
     }
-    static func rawPreview(_ data: Data) -> Data? {
-        guard let filter = CIRAWFilter(imageData: data, identifierHint: nil) else { return nil }
-        filter.isDraftModeEnabled = true; filter.scaleFactor = 0.3
-        guard let image = filter.outputImage else { return nil }; return encode(image)
+    static func rawPreviewImage(_ data:Data) -> CIImage? {
+        guard let filter = CIRAWFilter(imageData:data,identifierHint:nil) else { return nil }
+        filter.exposure = 0
+        if let full = filter.outputImage { filter.scaleFactor = Float(min(1,1600 / max(full.extent.width,full.extent.height))) }
+        guard let image = filter.outputImage,
+              let raster = context.createCGImage(image,from:image.extent,format:.RGBAh,colorSpace:CGColorSpace(name:CGColorSpace.extendedLinearSRGB)!) else { return nil }
+        // Cache floating-point pixels once; do not clip RAW highlights into a JPEG
+        // before the user lowers brightness in the live preview.
+        return CIImage(cgImage:raster).settingContentHeadroom(max(1,image.contentHeadroom))
     }
+    static func rawPreview(_ data:Data) -> Data? { rawPreviewImage(data).flatMap(encode) }
     static func develop(_ source: Data, edit: PhotoEdit, rawData: Data? = nil, depthMask: CIImage? = nil) -> Data? {
         var base: CIImage?
         if edit.useRAW == true, let rawData, let filter = CIRAWFilter(imageData: rawData, identifierHint: nil) {
-            filter.exposure = Float(edit.exposure)
+            filter.exposure = 0
             base = filter.outputImage
         } else { base = CIImage(data: source, options: [.applyOrientationProperty: true]) }
         guard let image = base else { return nil }
-        var recipe = edit
-        if edit.useRAW == true && rawData != nil { recipe.exposure = 0 }
+        let recipe = edit
+        // Brightness is applied after RAW development in both preview and export.
         let output = exportImage(adjust(image, edit: recipe, depthMask: depthMask), longEdge: edit.exportLongEdge)
         if edit.useRAW != true, edit.preserveHDR != false, let hdr = HDRPhoto.expanded(source) {
             let highlights = exportImage(adjust(hdr, edit: recipe, depthMask: depthMask), longEdge: edit.exportLongEdge)
@@ -85,10 +95,12 @@ nonisolated enum PhotoDeveloper {
     static func adjust(_ source: CIImage, edit: PhotoEdit, depthMask: CIImage? = nil) -> CIImage {
         var image = depthMask.map { PortraitRenderer.adjust(source, mask: $0, amount: edit.depthAmount ?? 0.375, separation: edit.depthSeparation ?? 0.5) } ?? source
         if let look = FilmLook.lineup.first(where: { $0.id == edit.styleID }) ?? CustomLookRegistry.shared.look(for: edit.styleID).map(FilmLook.custom), look.id != "standard" {
-            let style = StyleParams(look: look, options: LookOptions(), dials: LookRecipe.defaultDials(for: look.id))
-            image = StyleGrade.grade(image, cube: nil, cubeSize: 0, intensity: 1, style: style)
+            var style = StyleParams(look:look,options:LookOptions(),dials:LookRecipe.defaultDials(for:look.id))
+            style.refinedPhotoTexture = true
+            if look.id == "night35", style.glow > 0 { style.halation = 0.38; style.glow = 0 }
+            image = StyleGrade.grade(image,cube:nil,cubeSize:0,intensity:1,style:style)
         }
-        image = image.applyingFilter("CIExposureAdjust", parameters: ["inputEV": edit.exposure])
+        image = image.applyingFilter("CISRGBToneCurveToLinear").applyingFilter("CIExposureAdjust",parameters:["inputEV":edit.exposure]).applyingFilter("CILinearToSRGBToneCurve")
             .applyingFilter("CIColorControls", parameters: ["inputSaturation": edit.saturation])
             .applyingFilter("CITemperatureAndTint", parameters: ["inputNeutral": CIVector(x: 6500, y: 0), "inputTargetNeutral": CIVector(x: 6500 + edit.warmth * 2000, y: 0)])
         return geometry(PhotoColorMix.apply(edit.colorMix, to: image), edit: edit)
@@ -131,6 +143,7 @@ extension CameraStore {
             }.value
             for (item, grade, edit) in loaded where !captures.contains(where: { $0.id == item.id }) {
                 captures.append(item)
+                if records.first(where:{ $0.id == item.id })?.recoveryCopy == true { protectedCaptureIDs.insert(item.id) }
                 if let grade { graded[AnyHashable(item.id)] = grade }
                 if let edit { photoEdits[item.id] = edit }
                 if let info = records.first(where: { $0.id == item.id })?.clip { clipInfo[AnyHashable(item.id)] = info }
@@ -139,6 +152,7 @@ extension CameraStore {
             libraryReady = true
             if libraryDirty { libraryDirty = false; persistLibrary() }
             await importLockedCaptures()
+            cleanupExpiredCaptures()
         }
     }
     func persistLibrary() {
@@ -156,7 +170,7 @@ extension CameraStore {
             let grade = graded[AnyHashable(item.id)]
             return LibraryRecord(id: item.id, date: item.date, detail: item.detail, mode: item.mode.rawValue,
                 full: relative(item.fullPhotoURL), crop: relative(item.cropPhotoURL), raw: relative(item.rawURL),
-                movie: relative(item.movieURL), reel: relative(item.storiesURL), gradedFull: relative(grade?.fullURL), gradedCrop: relative(grade?.cropURL), edit: photoEdits[item.id], liveMovie: relative(item.livePhotoMovieURL), gradedMovie: relative(grade?.movie), gradedReel: relative(grade?.storiesMovie), clip: clipInfo[AnyHashable(item.id)], depthMask: relative(item.depthMaskURL))
+                movie: relative(item.movieURL), reel: relative(item.storiesURL), gradedFull: relative(grade?.fullURL), gradedCrop: relative(grade?.cropURL), edit: photoEdits[item.id], liveMovie: relative(item.livePhotoMovieURL), gradedMovie: relative(grade?.movie), gradedReel: relative(grade?.storiesMovie), clip: clipInfo[AnyHashable(item.id)], depthMask: relative(item.depthMaskURL), recoveryCopy:protectedCaptureIDs.contains(item.id) ? true : nil)
         }
         let previous = librarySaveTask
         librarySaveTask = Task {
@@ -168,7 +182,7 @@ extension CameraStore {
     func developPhoto(_ item: CaptureItem, edit: PhotoEdit) async -> Bool {
         guard let source = item.fullPhotoURL ?? item.cropPhotoURL, !editingPhotos.contains(item.id) else { return false }
         editingPhotos.insert(item.id)
-        defer { editingPhotos.remove(item.id) }
+        defer { editingPhotos.remove(item.id); drainCaptureCleanup() }
         let crop = item.fullPhotoURL != nil ? item.cropPhotoURL : nil
         let prepared = await Task.detached(priority: .userInitiated) { () -> ((URL, UIImage)?, (URL, UIImage)?) in
             let raw = edit.useRAW == true ? item.rawURL.flatMap { try? Data(contentsOf: $0) } : nil

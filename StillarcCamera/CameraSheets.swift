@@ -498,7 +498,12 @@ struct SettingsSheet: View {
                 }
 
                 Section("Files") {
+                    Toggle("Save captures in app",isOn:$store.saveInApp)
                     Toggle("Save to Photos", isOn: $store.saveToPhotos)
+                    Picker("Automatically delete app copies",selection:$store.autoDeleteAfter) {
+                        ForEach(CaptureRetention.allCases) { Text($0.title).tag($0) }
+                    }
+                    Text("At least one save destination stays on. Turning off in-app saving affects new captures; existing items stay until you delete them or automatic cleanup applies. Cleanup uses capture age, runs when you open or return to the app, and applies to existing and future app copies. Photos is never deleted. Failed Photos saves stay in the app as recovery copies.").font(.footnote).foregroundStyle(.secondary)
                     Text("Rangefinder keeps the wide frame and writes the frame-line crop beside it when BOTH is selected. With a style or baked LUT on, each is saved untouched and graded. RAW adds a DNG when the camera supports it.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
