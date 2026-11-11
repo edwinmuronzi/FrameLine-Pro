@@ -20,10 +20,10 @@ FrameLine already combines video, simultaneous landscape/reel output, rangefinde
 
 ## Order of work
 
-1. Reliable startup, responsive editing, dependable capture/save and measured sustained thermal performance across supported phones.
+1. Reliable startup, dependable capture/save and measured thermal performance across supported phones.
 2. Broader real-scene HDR validation and more compatible capture combinations. Adaptive HDR JPEG editing of compatible originals, crop/straighten/output size and adjustable depth edits for new captures are now available.
 3. More consistent natural/film processing, with real reference photographs and controlled side-by-side tests.
-4. Batch editing. Frame-blended slow shutter, launch-to-preset links, batch sharing and portable preset files are implemented.
+4. Frame-blended slow shutter, launch-to-preset links, batch sharing and portable preset files are implemented. Further editing features are outside the camera roadmap.
 
 Avoid claiming zero heat, identical performance on every phone, or a proprietary competitor pipeline that FrameLine does not implement. Use VALIDATION.md for the measured scope of each release.
 
@@ -31,4 +31,4 @@ Avoid claiming zero heat, identical performance on every phone, or a proprietary
 
 The competitor-inspired work is not all finished. Shipped additions include viewfinder A/B focus pulls, Natural RAW, Live Photo/depth capture, retained originals and edit recipes, crop/straighten/output sizing, adjustable retained-depth blur/separation, compatible-source adaptive HDR export, style/preset management, anamorphic framing and Lock Screen capture.
 
-Still open: broader RAW/HDR/depth format combinations and depth-aware export; more extensive natural/film and highlight-aware rendering calibration; batch editing. Native editable Apple Portrait assets and a proprietary HEIF+ equivalent are not implemented. Sustained 30 fps and older-device/energy validation also remain open. Lossless working-buffer support improves the memory architecture while retaining the grade; it does not establish feature parity or unlimited thermal performance.
+Still open: broader RAW/HDR/depth format combinations and depth-aware export; more extensive natural/film and highlight-aware rendering calibration. Fuji Classic, Eterna, Cinegrain and Night 35 now use gentler highlight curves and less saturated highlight tint. Native editable Apple Portrait assets and a proprietary HEIF+ equivalent are not implemented. Sustained 30 fps and older-device/energy validation also remain open. Lossless working-buffer support improves the memory architecture while retaining the grade; it does not establish feature parity or unlimited thermal performance.

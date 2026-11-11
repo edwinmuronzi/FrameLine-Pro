@@ -62,34 +62,34 @@ nonisolated struct LookRecipe: Sendable {
 
         // Classic Chrome: muted, deep blue skies, warm skin, soft contrast.
         case "fuji":
-            r.curve = [0.03, 0.22, 0.5, 0.78, 0.96]
+            r.curve = [0.03, 0.22, 0.50, 0.76, 0.95]
             r.mix = [1.04, -0.02, -0.02, -0.02, 0.97, 0.05, -0.02, 0.04, 0.98]
             r.shadowTint = [0.10, 0.35, 0.45]
             r.shadowAmount = 0.22
-            r.highlightTint = [1.0, 0.82, 0.6]
-            r.highlightAmount = 0.18
+            r.highlightTint = [1.0, 0.88, 0.74]
+            r.highlightAmount = 0.13
             r.vignette = 0.15
-            r.glow = 0.12
+            r.glow = 0.08
             r.soften = 0.12
 
         // Eterna: cinema colour with teal shadows and warm highlights. The
         // fade comes from the Tone dial.
         case "eterna":
-            r.curve = [0.0, 0.24, 0.5, 0.76, 1.0]
+            r.curve = [0.0, 0.24, 0.50, 0.75, 0.94]
             r.shadowTint = [0.05, 0.28, 0.35]
             r.shadowAmount = 0.3
-            r.highlightTint = [1.0, 0.78, 0.55]
-            r.highlightAmount = 0.22
+            r.highlightTint = [1.0, 0.87, 0.72]
+            r.highlightAmount = 0.15
             r.vignette = 0.22
-            r.glow = 0.18
+            r.glow = 0.12
 
         // Clean cinema colour with professional grain.
         case "cinegrain":
-            r.curve = [0.0, 0.2, 0.5, 0.8, 1.0]
+            r.curve = [0.0, 0.20, 0.50, 0.78, 0.96]
             r.shadowTint = [0.05, 0.3, 0.38]
             r.shadowAmount = 0.14
-            r.highlightTint = [1.0, 0.8, 0.6]
-            r.highlightAmount = 0.12
+            r.highlightTint = [1.0, 0.87, 0.74]
+            r.highlightAmount = 0.09
             r.vignette = 0.18
             r.glow = 0.06
 
@@ -188,13 +188,13 @@ nonisolated struct LookRecipe: Sendable {
 
         // Night film with a red glow around lights.
         case "night35":
-            r.curve = [0.02, 0.2, 0.5, 0.8, 0.98]
+            r.curve = [0.02, 0.20, 0.50, 0.76, 0.94]
             r.shadowTint = [0.0, 0.3, 0.5]
             r.shadowAmount = 0.3
-            r.highlightTint = [1.0, 0.4, 0.2]
-            r.highlightAmount = 0.28
+            r.highlightTint = [1.0, 0.56, 0.35]
+            r.highlightAmount = 0.20
             r.vignette = 0.25
-            r.glow = 0.5
+            r.glow = 0.32
 
         // Silver-gelatin black and white: soft, warm paper, grainy.
         case "silver":
