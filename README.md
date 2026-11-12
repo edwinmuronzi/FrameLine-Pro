@@ -1,5 +1,7 @@
 # Stillarc Camera
 
+<img src="Marketing/Icons/Stillarc-Light.png" width="90" alt="Stillarc light icon"> <img src="Marketing/Icons/Stillarc-Dark.png" width="90" alt="Stillarc dark icon">
+
 **Your vision. Beautifully framed.**
 
 A creative camera for iPhone: natural photography, expressive video, and a rangefinder way of seeing. StillarcCamera brings live looks, manual controls, exposure aids and two-format recording into one considered interface.
@@ -284,3 +286,8 @@ Found an issue? Include the iPhone model, iOS version, mode, format/frame rate, 
 
 
 The display name, Xcode project and GitHub repository use Stillarc Camera. The installed app retains its original bundle identifier and stored preference keys so an update keeps existing captures, presets and settings. New preset links use the stillarc scheme, and previously copied links remain supported.
+
+
+### Camera identity · 1.3.4
+
+The approved flat aperture and geometric S replace the previous illuminated multi-ring icon across light, dark and tinted Home Screen appearances, the in-app feature tour and marketing artwork. [Approved masters](Marketing/Icons) · [Generation details](Marketing/GenerationPrompts.json). The installed name remains **Stillarc**.

@@ -1,0 +1,69 @@
+{
+  "version": "1.3.4",
+  "build": 21,
+  "assets": [
+    {
+      "file": "Marketing/Icons/Stillarc-Dark.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "d31f470434ac95d4f68f051e693547790abdfd8df797e70a26df83cb690882a4"
+    },
+    {
+      "file": "Marketing/Icons/Stillarc-Light.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "ebf9307e1fa1b6dcb2ec95d0120be19c638e84b31f6fa11cde9915027e69f59f"
+    },
+    {
+      "file": "Marketing/Icons/Stillarc-Tinted.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "L",
+      "sha256": "922ddd31ea15c343a01b495481e1511fa88b98c0206fd9df599302b0694231fa"
+    },
+    {
+      "file": "StillarcCamera/Assets.xcassets/AppIcon.appiconset/AppIcon-Dark.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGB",
+      "sha256": "58e7a94718e31acf06517a6f421540b9a3851e06d8c0f8ee7a226e630462ad2d"
+    },
+    {
+      "file": "StillarcCamera/Assets.xcassets/AppIcon.appiconset/AppIcon-Tinted.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "L",
+      "sha256": "6c36503ad649a7b20a5d1af655ae38c45220cad71e02d55f4f28172873f27bbb"
+    },
+    {
+      "file": "StillarcCamera/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGB",
+      "sha256": "f69f0f8a5eba8ceadb695d127f1e0e386ef14202c32aa15c54d3a61f7b9c039a"
+    },
+    {
+      "file": "StillarcCamera/Assets.xcassets/BrandIcon.imageset/icon-dark.png",
+      "width": 768,
+      "height": 768,
+      "mode": "RGB",
+      "sha256": "b0d00a5355da8e829be914bdc187d1131ad82517e3f2f311031efa5532c2ac65"
+    },
+    {
+      "file": "StillarcCamera/Assets.xcassets/BrandIcon.imageset/icon.png",
+      "width": 768,
+      "height": 768,
+      "mode": "RGB",
+      "sha256": "77a359f45433b1103535c2a96963bd8f7669ad45077bf70b3936c1cb8e6be805"
+    }
+  ],
+  "desktopCopiesMatchMasters": true,
+  "marketingSlides": 10,
+  "marketingSlideDimensions": [
+    1320,
+    2868
+  ],
+  "scope": "Brand identity and generated marketing resources; capture engine and preferences unchanged."
+}

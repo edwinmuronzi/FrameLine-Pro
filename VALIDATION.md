@@ -1,5 +1,11 @@
 # Stillarc Camera validation
 
+## 1.3.4 — approved icon and branding
+
+Release archive and Debug simulator builds passed for Camera and its embedded extensions. The new light/dark/tinted 1024px Home Screen icons and 768px in-app BrandIcon copies were checked for opaque encoding, dimensions and matching approved artwork. All three full-size Desktop PNGs match the marketing masters byte-for-byte. Ten opaque 1320×2868 marketing slides and the Overview/Onboarding contact sheets were refreshed; actual tour pages were captured for visual review, including the final summary emblem. Strict production signature verification passed. The signed release was installed and launched on the connected iPhone 17 Pro.
+
+This is an identity/resource update; no capture/rendering algorithms or saved preferences were changed, and no new sustained thermal or capture-quality claim is made. [Asset verification](Validation/1.3.4/icon-assets.json).
+
 ## 1.3.3 — Log/photo transition, storage policy and Develop preview
 
 On the **black iPhone 16 Pro**, activating supported Apple Log then immediately applying a photo preset returned the UI to Standard and delivered a processed photo. Legacy photo-preset Log/Log 2 fields also normalized to Standard without losing preset matching, and both shutter attempts succeeded. **Actual Apple Log 2 capture is not supported on this 16 Pro**; its Log 2 check validates metadata/state normalization, not that hardware format. The transition restores the existing input connection to the photo preset and sRGB, without removing/re-adding camera inputs.

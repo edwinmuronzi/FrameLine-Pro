@@ -114,3 +114,8 @@ Non-video modes and photo presets normalize Log to Standard, including legacy pr
 Storage destinations are snapshotted per shutter press/recording. Photos-save tasks return success. Photos-only captures remain indexed/protected until import succeeds; failed or interrupted saves retain a persisted recovery flag. Automatic cleanup uses capture age, skips recovery/editing items and waits until gallery review ends. It reuses atomic index-first deletion and the Photos-save barrier, with background file removal. Never delete Photos assets for this preference. `--verify-capture-storage` uses private fixtures and mocked Photos results, not the real library.
 
 Develop uses one explicit extended-sRGB working space for its camera-calibrated look operations in both preview and save. Brightness crosses to linear light, and HDR previews render to an EDR float surface. RAW preview pixels are cached once in a 1600-pixel float image; do not insert an SDR JPEG between RAW decode and preview adjustments. The larger preview uses 56% of available height, capped at 480 points. `--verify-editor-preview` now includes camera-look swatches, export matching, HDR and a 1600-pixel bounded interaction sweep; reports distinguish render completion from display latency.
+
+
+## 1.3.4 — approved identity refresh
+
+The flat graphite aperture and rounded yellow S replace the prior luminous multi-ring artwork in all Home Screen variants, the tour BrandIcon, marketing headers and Desktop master PNGs. scripts/render-icon.swift derives app/brand/tinted assets from Marketing/Icons masters. The production bundle identifiers, capture pipeline and settings remain unchanged. Version/build are synchronized across Camera and its embedded extensions.

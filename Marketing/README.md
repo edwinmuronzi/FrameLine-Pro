@@ -55,4 +55,7 @@ Format, lens and capture combinations vary by device. Listing setup also require
 
 ## Approved app icons
 
-[Icons](Icons) contains the approved light, dark and tinted circular Stillarc S/aperture artwork. App asset copies are opaque 1024 × 1024 PNGs; the full-resolution masters are retained here. The installed Home Screen name is **Stillarc**. Generation details are recorded in GenerationPrompts.json.
+[Icons](Icons) contains the approved light, dark and tinted flat aperture/geometric-S artwork. App asset copies are opaque 1024 × 1024 PNGs; the full-resolution masters are retained here. The installed Home Screen name is **Stillarc**. Generation details are recorded in GenerationPrompts.json.
+
+
+Camera 1.3.4 (21) adopts the simplified aperture/S identity approved on 13 November 2026. App icons, the feature-tour BrandIcon, marketing headers and Desktop light/dark/tinted PNGs share the same master geometry. `scripts/render-icon.swift` resamples the masters; `--tinted` creates the monochrome iOS appearance without changing the symbol.

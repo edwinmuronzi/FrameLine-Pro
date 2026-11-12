@@ -11,7 +11,7 @@ struct MarketingSlide: View {
             LinearGradient(colors: [.black.opacity(0.90), .black.opacity(0.42), .black.opacity(0.82)], startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 9) {
-                    Image(systemName: "viewfinder").font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.gold)
+                    Image("BrandIcon").resizable().scaledToFit().frame(width:22,height:22).clipShape(RoundedRectangle(cornerRadius:5))
                     Text("STILLARC CAMERA").font(.system(size: 12, weight: .heavy, design: .monospaced)).tracking(2.8)
                     Spacer()
                     Text(String(format: "%02d", story.id == FeatureStory.all.count - 1 ? 10 : story.id + 1)).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(.white.opacity(0.5))
@@ -52,7 +52,7 @@ struct MarketingExportHost: View {
         ZStack {
             Color.black
             VStack(spacing: 20) {
-                Image(systemName: "viewfinder").font(.system(size: 60)).foregroundStyle(Theme.gold)
+                Image("BrandIcon").resizable().scaledToFit().frame(width:70,height:70).clipShape(RoundedRectangle(cornerRadius:15))
                 Text(message).foregroundStyle(.white)
             }
         }

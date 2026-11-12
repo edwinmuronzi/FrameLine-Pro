@@ -113,7 +113,7 @@ struct FeatureTour: View {
                     .blur(radius: 18).overlay(.black.opacity(0.62)).ignoresSafeArea()
                 VStack(spacing: 10) {
                     HStack {
-                        Label("STILLARC CAMERA", systemImage: "viewfinder")
+                        Label {Text("STILLARC CAMERA")} icon: {Image("BrandIcon").resizable().scaledToFit().frame(width:20,height:20).clipShape(RoundedRectangle(cornerRadius:4))}
                             .font(.system(size: 12, weight: .heavy, design: .monospaced)).tracking(2)
                         Spacer()
                         Button("Skip tour", action: finish).font(.system(size: 13, weight: .semibold))

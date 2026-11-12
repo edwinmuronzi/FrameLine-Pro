@@ -43,10 +43,10 @@
     }
   ],
   "icon_design": {
-    "method": "Built-in image_gen tool, edited from the reviewed camera concept.",
-    "dark_prompt": "Black and bright yellow icon. Four circular focus arcs, a detached thin ring with a clear gap around a graphite camera aperture, and a central yellow S formed from opposing circular sweeps. Full opaque square, no text.",
-    "light_prompt": "Preserve the dark emblem geometry on a cool frosted white background, keeping saturated yellow circular arcs and S and the charcoal aperture.",
-    "tinted_prompt": "Preserve the dark emblem geometry and convert yellow to near-white for the iOS tinted appearance.",
+    "method": "Built-in image generation; approved on 13 November 2026. Asset resizing and grayscale tint adaptation use scripts/render-icon.swift.",
+    "dark_prompt": "One simplified flat six-blade graphite aperture and a centered rounded geometric yellow S on midnight charcoal; precise circular arcs, clean seams, generous space, professional camera identity; no outer rings, glow, lens gloss or ornamental focus brackets.",
+    "light_prompt": "Preserve the same aperture and yellow S on a pale cool-gray background, graphite blades and a dark central opening for contrast.",
+    "tinted_prompt": "Deterministic grayscale adaptation of the approved dark master for the iOS tinted appearance.",
     "masters": [
       "Icons/Stillarc-Dark.png",
       "Icons/Stillarc-Light.png",
