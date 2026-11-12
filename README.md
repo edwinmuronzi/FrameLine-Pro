@@ -296,3 +296,8 @@ The approved flat aperture and geometric S replace the previous illuminated mult
 ### Camera identity · 1.3.5
 
 The latest approved icon uses a large yellow geometric S, a lens ring with top/bottom arc gaps, and a small recording-red A. Light, dark and tinted appearances, in-app branding and Desktop master files are synchronized. The A is a static recording-inspired brand accent. [Current artwork](Marketing/Icons).
+
+
+### Final Camera identity · 1.3.6
+
+The final approved artwork has a bold yellow S, more breathing room inside the split lens ring and a tiny recording-red A. Light and dark Home Screen appearances now share this one dark design. In-app branding, marketing and Desktop copies match; iOS custom tinting uses the matching monochrome derivative.

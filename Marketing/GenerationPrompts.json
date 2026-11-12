@@ -43,10 +43,10 @@
     }
   ],
   "icon_design": {
-    "method": "Built-in image generation; geometric S, split ring and recording-red A approved on 13 November 2026. scripts/render-icon.swift resamples masters and creates grayscale tint.",
-    "dark_prompt": "Large flat geometric yellow S inside a silver circular lens ring with small top/bottom gaps; small recording-red uppercase A at the upper right; deep charcoal background, restrained professional geometry, no aperture blades or glow.",
-    "light_prompt": "Preserve the exact approved S, ring, gaps and red A geometry; porcelain-white background, dark graphite lens ring, photographic-yellow S and recording-red A.",
-    "tinted_prompt": "Deterministic grayscale adaptation of the approved dark master for the iOS tinted appearance.",
+    "method": "Built-in image-generation refinement, approved 13 November 2026. Native resizing/tint adaptation via scripts/render-icon.swift. One identical dark identity in light and dark appearances.",
+    "dark_prompt": "Bold geometric yellow S with increased breathing room inside a silver circular lens ring split at top and bottom; tiny recording-red A at upper right, visually dot-like at Home Screen size; deep charcoal background.",
+    "light_prompt": "Use the exact same approved dark artwork as the default and dark Home Screen appearances, at user request. No white-background variant.",
+    "tinted_prompt": "Deterministic grayscale adaptation of the approved final dark master for iOS custom tinting.",
     "masters": [
       "Icons/Stillarc-Dark.png",
       "Icons/Stillarc-Light.png",

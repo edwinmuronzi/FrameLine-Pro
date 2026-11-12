@@ -124,3 +124,8 @@ The flat graphite aperture and rounded yellow S replace the prior luminous multi
 ## 1.3.5 — S/lens identity
 
 Approved large yellow S, silver split lens ring and small red A replace the aperture identity across light/dark/tinted app assets, tour branding, marketing headers and Desktop PNGs. The light master preserves geometry with a graphite ring. The A is static artwork. Bundle identities, capture behavior and settings are preserved.
+
+
+## 1.3.6 — final icon proportions
+
+One approved dark master serves default/light and dark appearances. The S has more clearance from the lens ring and the red A is dot-like at small sizes. BrandIcon, marketing and Desktop copies match. Capture behavior, preferences and installation identity remain unchanged.

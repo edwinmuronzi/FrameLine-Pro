@@ -1,0 +1,54 @@
+{
+  "version": "1.3.6",
+  "build": 23,
+  "identicalDefaultAndDark": true,
+  "desktopCopiesMatch": true,
+  "assets": [
+    {
+      "file": "StillarcCamera/Assets.xcassets/AppIcon.appiconset/AppIcon-Dark.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "mode": "RGB",
+      "sha256": "425ac217e0333d753d627292013b8274270aab5d950b49b9893fc344196c8c2b"
+    },
+    {
+      "file": "StillarcCamera/Assets.xcassets/AppIcon.appiconset/AppIcon-Tinted.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "mode": "L",
+      "sha256": "f5411d7c4a0018101df6e08b232d8ccb9d57e83820d391f5bd3f509ac08152f8"
+    },
+    {
+      "file": "StillarcCamera/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "mode": "RGB",
+      "sha256": "425ac217e0333d753d627292013b8274270aab5d950b49b9893fc344196c8c2b"
+    },
+    {
+      "file": "StillarcCamera/Assets.xcassets/BrandIcon.imageset/icon-dark.png",
+      "size": [
+        768,
+        768
+      ],
+      "mode": "RGB",
+      "sha256": "35754d5d125a7a550630d5ee808ec142f8db0078bba8f2f478812a2e47b0881e"
+    },
+    {
+      "file": "StillarcCamera/Assets.xcassets/BrandIcon.imageset/icon.png",
+      "size": [
+        768,
+        768
+      ],
+      "mode": "RGB",
+      "sha256": "35754d5d125a7a550630d5ee808ec142f8db0078bba8f2f478812a2e47b0881e"
+    }
+  ],
+  "scope": "Branding only; no capture or saved-setting changes."
+}

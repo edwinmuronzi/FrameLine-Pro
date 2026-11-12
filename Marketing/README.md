@@ -62,3 +62,6 @@ Camera 1.3.4 (21) adopts the simplified aperture/S identity approved on 13 Novem
 
 
 Camera 1.3.5 (22) adopts the newly approved large geometric S and split lens ring, with a small recording-red A in the upper-right corner. The S shares Studio’s geometry; the lens ring and photographic yellow retain Camera’s identity. Light appearance uses a graphite ring on white. The A is a static brand accent, not a live recording-status indicator. All app, tour, marketing and Desktop copies use these masters.
+
+
+Camera 1.3.6 (23) is the final approved refinement: bolder S, more space inside the split lens ring, and a tiny dot-like red A. Default/light and dark appearances intentionally use identical dark artwork. The tinted asset remains a system-customization derivative. All in-app, Desktop and marketing copies use this final master.

@@ -1,5 +1,9 @@
 # Stillarc Camera validation
 
+## 1.3.6 — final unified dark icon
+
+Release archive and Debug simulator builds passed. Default/light and dark 1024px app icons are byte-identical, as are their corresponding in-app branding copies. Tinted assets are matching grayscale derivatives. Opaque dimensions and Desktop/master equality passed. Ten marketing slides, the overview and four actual onboarding previews were refreshed and checked. Strict signature verification passed; release 1.3.6 (23) installed and launched on the iPhone 17 Pro. Capture code, preferences and installation identifiers are unchanged. This identity-only update adds no new capture or thermal-performance claim. [Asset checks](Validation/1.3.6/icon-assets.json).
+
 ## 1.3.5 — approved S, lens ring and red A
 
 Release archive and Debug simulator builds passed. Light/dark/tinted Home Screen assets are opaque 1024px PNGs; in-app copies are 768px. Desktop files match current marketing masters byte-for-byte. Ten opaque 1320×2868 marketing slides and the Overview/Onboarding contact sheets were regenerated with the new branding; four actual tour previews, including the summary, were inspected. Production signature verification passed, and the signed release was installed and launched on the iPhone 17 Pro. The red A is static artwork. Capture algorithms, settings and bundle identifiers are unchanged; no new thermal/performance claim is made for this identity-only change. [Asset checks](Validation/1.3.5/icon-assets.json).
