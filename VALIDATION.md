@@ -1,5 +1,9 @@
 # Stillarc Camera validation
 
+## 1.3.5 — approved S, lens ring and red A
+
+Release archive and Debug simulator builds passed. Light/dark/tinted Home Screen assets are opaque 1024px PNGs; in-app copies are 768px. Desktop files match current marketing masters byte-for-byte. Ten opaque 1320×2868 marketing slides and the Overview/Onboarding contact sheets were regenerated with the new branding; four actual tour previews, including the summary, were inspected. Production signature verification passed, and the signed release was installed and launched on the iPhone 17 Pro. The red A is static artwork. Capture algorithms, settings and bundle identifiers are unchanged; no new thermal/performance claim is made for this identity-only change. [Asset checks](Validation/1.3.5/icon-assets.json).
+
 ## 1.3.4 — approved icon and branding
 
 Release archive and Debug simulator builds passed for Camera and its embedded extensions. The new light/dark/tinted 1024px Home Screen icons and 768px in-app BrandIcon copies were checked for opaque encoding, dimensions and matching approved artwork. All three full-size Desktop PNGs match the marketing masters byte-for-byte. Ten opaque 1320×2868 marketing slides and the Overview/Onboarding contact sheets were refreshed; actual tour pages were captured for visual review, including the final summary emblem. Strict production signature verification passed. The signed release was installed and launched on the connected iPhone 17 Pro.

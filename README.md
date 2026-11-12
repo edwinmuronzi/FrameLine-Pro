@@ -291,3 +291,8 @@ The display name, Xcode project and GitHub repository use Stillarc Camera. The i
 ### Camera identity · 1.3.4
 
 The approved flat aperture and geometric S replace the previous illuminated multi-ring icon across light, dark and tinted Home Screen appearances, the in-app feature tour and marketing artwork. [Approved masters](Marketing/Icons) · [Generation details](Marketing/GenerationPrompts.json). The installed name remains **Stillarc**.
+
+
+### Camera identity · 1.3.5
+
+The latest approved icon uses a large yellow geometric S, a lens ring with top/bottom arc gaps, and a small recording-red A. Light, dark and tinted appearances, in-app branding and Desktop master files are synchronized. The A is a static recording-inspired brand accent. [Current artwork](Marketing/Icons).

@@ -43,9 +43,9 @@
     }
   ],
   "icon_design": {
-    "method": "Built-in image generation; approved on 13 November 2026. Asset resizing and grayscale tint adaptation use scripts/render-icon.swift.",
-    "dark_prompt": "One simplified flat six-blade graphite aperture and a centered rounded geometric yellow S on midnight charcoal; precise circular arcs, clean seams, generous space, professional camera identity; no outer rings, glow, lens gloss or ornamental focus brackets.",
-    "light_prompt": "Preserve the same aperture and yellow S on a pale cool-gray background, graphite blades and a dark central opening for contrast.",
+    "method": "Built-in image generation; geometric S, split ring and recording-red A approved on 13 November 2026. scripts/render-icon.swift resamples masters and creates grayscale tint.",
+    "dark_prompt": "Large flat geometric yellow S inside a silver circular lens ring with small top/bottom gaps; small recording-red uppercase A at the upper right; deep charcoal background, restrained professional geometry, no aperture blades or glow.",
+    "light_prompt": "Preserve the exact approved S, ring, gaps and red A geometry; porcelain-white background, dark graphite lens ring, photographic-yellow S and recording-red A.",
     "tinted_prompt": "Deterministic grayscale adaptation of the approved dark master for the iOS tinted appearance.",
     "masters": [
       "Icons/Stillarc-Dark.png",

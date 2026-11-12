@@ -1,0 +1,61 @@
+{
+  "version": "1.3.5",
+  "build": 22,
+  "assets": [
+    {
+      "path": "StillarcCamera/Assets.xcassets/AppIcon.appiconset/AppIcon-Dark.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "mode": "RGB",
+      "sha256": "443e847fe9b83111e882ab09f989c4a594efb276b5f9da6a0df62ac7de020c76"
+    },
+    {
+      "path": "StillarcCamera/Assets.xcassets/AppIcon.appiconset/AppIcon-Tinted.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "mode": "L",
+      "sha256": "4da815d837a2ec580febb558c83860423f69d2f147fdb1100dda97285801935b"
+    },
+    {
+      "path": "StillarcCamera/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "mode": "RGB",
+      "sha256": "5189ff27fd7e97070bf0ad618d43d044a08a61157581fe7362d157a550102e68"
+    },
+    {
+      "path": "StillarcCamera/Assets.xcassets/BrandIcon.imageset/icon-dark.png",
+      "size": [
+        768,
+        768
+      ],
+      "mode": "RGB",
+      "sha256": "f56e67f991c375f35501c4a49fb26fdd1f74410f5107c25ac2d37466b13a316d"
+    },
+    {
+      "path": "StillarcCamera/Assets.xcassets/BrandIcon.imageset/icon.png",
+      "size": [
+        768,
+        768
+      ],
+      "mode": "RGB",
+      "sha256": "9c4b534ae7c6deca91a505b7db948179e35949c63ee7674f4c67bf36ff92288b"
+    }
+  ],
+  "desktopCopiesMatchMasters": true,
+  "marketingSlides": 10,
+  "tourPreviewsChecked": [
+    0,
+    3,
+    8,
+    14
+  ],
+  "redA": "Static artwork, not a live recording-status indicator",
+  "scope": "Branding/resources only; capture behavior and preferences unchanged."
+}

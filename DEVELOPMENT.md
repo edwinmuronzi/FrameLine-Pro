@@ -119,3 +119,8 @@ Develop uses one explicit extended-sRGB working space for its camera-calibrated 
 ## 1.3.4 — approved identity refresh
 
 The flat graphite aperture and rounded yellow S replace the prior luminous multi-ring artwork in all Home Screen variants, the tour BrandIcon, marketing headers and Desktop master PNGs. scripts/render-icon.swift derives app/brand/tinted assets from Marketing/Icons masters. The production bundle identifiers, capture pipeline and settings remain unchanged. Version/build are synchronized across Camera and its embedded extensions.
+
+
+## 1.3.5 — S/lens identity
+
+Approved large yellow S, silver split lens ring and small red A replace the aperture identity across light/dark/tinted app assets, tour branding, marketing headers and Desktop PNGs. The light master preserves geometry with a graphite ring. The A is static artwork. Bundle identities, capture behavior and settings are preserved.
