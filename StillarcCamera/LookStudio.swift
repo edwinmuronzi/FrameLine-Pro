@@ -397,9 +397,16 @@ struct LookStudio: View {
 
     @State private var thumbs: [String: UIImage] = [:]
     @State private var showManager = false
+    @State private var sharedColour:URL?
+    @State private var colourSharing=false
+    @State private var colourShareError:String?
     @State private var thumbTask: Task<Void, Never>?
     @State private var library = SampleLibrary.shared
 
+    private func clearSharedColour() {
+        if let url=sharedColour {Task.detached(priority:.utility){try? FileManager.default.removeItem(at:url.deletingLastPathComponent())}}
+        sharedColour=nil
+    }
     private var qualityBinding: Binding<Int> {
         Binding(
             get: { store.currentDials.quality },
@@ -450,6 +457,16 @@ struct LookStudio: View {
             SampleStrip()
 
             strip
+            HStack {
+                if let sharedColour {ShareLink(item:sharedColour) {Label("Share colour look",systemImage:"square.and.arrow.up")}}
+                else {Button(colourSharing ? "Preparing colour look…":"Share colour with Studio",systemImage:"square.and.arrow.up") {
+                    guard !colourSharing else {return};colourSharing=true;colourShareError=nil
+                    let style=store.styleParams,monitor=store.monitorLUT,lut=store.monitorLUT ? store.selectedLUT:nil,intensity=store.lutIntensity
+                    Task {do {let url=try await Task.detached(priority:.utility){try CameraColorShare.export(style:style,lut:lut,intensity:intensity)}.value;if store.styleParams==style && store.monitorLUT==monitor && store.lutIntensity==intensity && (!monitor || store.selectedLUT?.id==lut?.id) {sharedColour=url} else {try? FileManager.default.removeItem(at:url.deletingLastPathComponent())}} catch {colourShareError=error.localizedDescription};colourSharing=false}
+                }.disabled(colourSharing)}
+            }.font(.caption).foregroundStyle(Theme.gold)
+            if let colourShareError {Text(colourShareError).font(.caption).foregroundStyle(.red)}
+            Text("Colour-only .cube look for Studio → Film → Import. Grain, halos, framing, HDR and camera settings stay here. Prepare a new file after changing the look.").font(.caption2).foregroundStyle(.secondary)
 
             VStack(spacing: 8) {
                 HStack(spacing: 10) {
@@ -479,6 +496,10 @@ struct LookStudio: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 10)
         .background(Color.black.ignoresSafeArea())
+        .onChange(of:store.styleParams) {_,_ in clearSharedColour()}
+        .onChange(of:store.selectedLUT?.id) {_,_ in clearSharedColour()}
+        .onChange(of:store.lutIntensity) {_,_ in clearSharedColour()}
+        .onChange(of:store.monitorLUT) {_,_ in clearSharedColour()}
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showManager) {
             LookManager(store: store)

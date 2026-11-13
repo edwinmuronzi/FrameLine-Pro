@@ -1,7 +1,7 @@
 
 import Foundation
 
-struct CubeLUT: Identifiable, Equatable {
+struct CubeLUT: Identifiable, Equatable, Sendable {
     let id: UUID
     let name: String
     let size: Int

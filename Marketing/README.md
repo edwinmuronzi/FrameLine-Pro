@@ -65,3 +65,7 @@ Camera 1.3.5 (22) adopts the newly approved large geometric S and split lens rin
 
 
 Camera 1.3.6 (23) is the final approved refinement: bolder S, more space inside the split lens ring, and a tiny dot-like red A. Default/light and dark appearances intentionally use identical dark artwork. The tinted asset remains a system-customization derivative. All in-app, Desktop and marketing copies use this final master.
+
+
+### Colour companion workflow (1.3.7)
+Camera can share its colour look with Stillarc Studio as a creative .cube, and import a Studio colour LUT for capture. Market this as colour-look exchange, not automatic library sync or full project/preset transfer. Grain, halos, HDR and camera settings are not carried by the LUT.

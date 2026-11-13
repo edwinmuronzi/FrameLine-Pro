@@ -301,3 +301,8 @@ The latest approved icon uses a large yellow geometric S, a lens ring with top/b
 ### Final Camera identity · 1.3.6
 
 The final approved artwork has a bold yellow S, more breathing room inside the split lens ring and a tiny recording-red A. Light and dark Home Screen appearances now share this one dark design. In-app branding, marketing and Desktop copies match; iOS custom tinting uses the matching monochrome derivative.
+
+
+## Colour exchange with Stillarc Studio · 1.3.7
+
+Look studio → **Share colour with Studio** prepares a 33³ display-sRGB creative `.cube` from current style colour and the enabled monitor LUT. Save/share it through Files or AirDrop and import it in Studio → Film. Studio can export a colour LUT back into Camera’s existing LUT importer. Start from a neutral style to avoid double grading. Spatial texture, grain/halation, camera exposure/focus, HDR interpretation and complete app presets are not transferred; the LUT is a sampled SDR colour approximation. Preparing it runs once on a worker, never during camera preview or recording.
