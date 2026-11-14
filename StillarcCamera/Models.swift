@@ -352,6 +352,7 @@ struct FilmLook: Identifiable, Equatable {
 
 struct DeviceCaps: Sendable, Equatable {
     var hasCamera = false
+    var usesVirtualCamera = false
     var hasTorch = false
     var supportsManualFocus = false
     var supportsRaw = false

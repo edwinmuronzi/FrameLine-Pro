@@ -306,3 +306,11 @@ The final approved artwork has a bold yellow S, more breathing room inside the s
 ## Colour exchange with Stillarc Studio · 1.3.7
 
 Look studio → **Share colour with Studio** prepares a 33³ display-sRGB creative `.cube` from current style colour and the enabled monitor LUT. Save/share it through Files or AirDrop and import it in Studio → Film. Studio can export a colour LUT back into Camera’s existing LUT importer. Start from a neutral style to avoid double grading. Spatial texture, grain/halation, camera exposure/focus, HDR interpretation and complete app presets are not transferred; the LUT is a sampled SDR colour approximation. Preparing it runs once on a worker, never during camera preview or recording.
+
+## Lens and Log responsiveness · 1.3.8
+
+Selecting another optical lens now exits the dedicated wide-camera Focus Lens mode automatically. Supported virtual-camera lens choices stay available during Log recording. Raw Log on a physical camera still locks that physical camera during the take; its supported digital crops remain available.
+
+Log HEVC uses a bounded live capture queue and disables encoder frame reordering. The single monitor checks display readiness before rendering, limits its output-buffer pool, and no longer inserts a delay when valid Log recording buffers replace preview buffers. Selected recording resolution, bitrate and 10-bit Log data are retained. On iOS 27 the writer explicitly preserves the source Log transfer tag.
+
+See [native checks and limits](Validation/1.3.8/README.md).

@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "semanticJSONComparison": true,
+  "checks": {
+    "frameline.lastSession": true,
+    "stillarc.saveToPhotos": true,
+    "stillarc.saveInApp": true,
+    "stillarc.autoDeleteAfter": true,
+    "frameline.rec.fps": true,
+    "frameline.rec.width": true,
+    "frameline.rec.height": true,
+    "frameline.look.options": true
+  }
+}

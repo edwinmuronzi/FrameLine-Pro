@@ -1,0 +1,3 @@
+2026-11-14 21:48:50.637 StillarcCamera[12924:3339016] PHOTO_BURST_VERIFY PASS styled=0 captured=5 elapsed=1.84 mainActorTicks=52
+2026-11-14 21:48:53.437 StillarcCamera[12924:3339016] PHOTO_BURST_VERIFY PASS styled=1 captured=5 elapsed=2.43 mainActorTicks=81
+2026-11-14 21:48:53.437 StillarcCamera[12924:3339016] PHOTO_BURST_VERIFY COMPLETE no test shots saved to Photos

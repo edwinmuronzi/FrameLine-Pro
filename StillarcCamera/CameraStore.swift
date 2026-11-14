@@ -571,12 +571,8 @@ final class CameraStore {
     }
 
     func canSelectLens(_ lens: LensOption) -> Bool {
-        if focusPullLensEnabled {
-            let wideID = lenses.first(where: { $0.zoom == 1 })?.deviceID
-            return lens.deviceID == wideID
-        }
         guard isRecording else { return true }
-        if recordingAllowsOpticalSwitch { return true }
+        if recordingAllowsOpticalSwitch || caps.usesVirtualCamera { return true }
         return lens.deviceID == lenses.first(where: { $0.uniqueID == selectedLensID })?.deviceID
     }
     var lutIntensity: Float = 1.0 {
@@ -944,6 +940,7 @@ final class CameraStore {
         if ProcessInfo.processInfo.arguments.contains("--verify-preset-capture") { verifyPresetCapture() }
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-pipeline") { verifyPhotoPipeline() }
         if ProcessInfo.processInfo.arguments.contains("--verify-single-recording") { verifySingleRecording() }
+        if ProcessInfo.processInfo.arguments.contains("--verify-camera-reliability") { verifyCameraReliability() }
         if ProcessInfo.processInfo.arguments.contains("--verify-photo-burst") { verifyPhotoBurst() }
         if ProcessInfo.processInfo.arguments.contains("--verify-upgrade") { verifyUpgrade() }
         if ProcessInfo.processInfo.arguments.contains("--verify-library") { verifyLibraryAndEdits() }
@@ -2675,7 +2672,7 @@ final class CameraStore {
     private func aidsChanged() {
         guard !isShowcase else { return }
         #if DEBUG
-        let persist = !ProcessInfo.processInfo.arguments.contains("--verify-single-recording")
+        let persist = !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--verify-") })
         #else
         let persist = true
         #endif
@@ -2731,6 +2728,12 @@ final class CameraStore {
 
         guard lens.uniqueID != selectedLensID else { return }
 
+        if !isRecording, focusPullLensEnabled,
+           lens.deviceID != lenses.first(where: { $0.zoom == 1 })?.deviceID {
+            // A selected optical camera takes priority over the dedicated
+            // wide-camera focus-pull mode. Do not leave the lens menu disabled.
+            focusPullLensEnabled = false
+        }
         cancelFocusPull()
         // A queued codec probe must not rebuild the camera during the ramp.
         codecTask?.cancel()
@@ -3481,6 +3484,91 @@ final class CameraStore {
             try? FileManager.default.removeItem(at: testRoot)
             for item in captures.filter({ !initial.contains($0.id) }) { delete(item) }
             NSLog("UPGRADE_VERIFY COMPLETE mainActorTicks=%ld elapsed=%.2f thermal=%ld no Photos writes", ticks, ProcessInfo.processInfo.systemUptime - tickStart, ProcessInfo.processInfo.thermalState.rawValue)
+        }
+    }
+
+    private func verifyCameraReliability() {
+        Task { @MainActor in
+            let priorIdle=UIApplication.shared.isIdleTimerDisabled
+            UIApplication.shared.isIdleTimerDisabled=true
+            defer {UIApplication.shared.isIdleTimerDisabled=priorIdle}
+            var results=[[String:Any]](),lensResults=[[String:Any]]()
+            @MainActor func save(_ stage:String,_ passed:Bool?=nil,_ error:String?=nil) {
+                var r:[String:Any]=["version":Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "unknown","stage":stage,"takes":results,"lenses":lensResults,"thermal":ProcessInfo.processInfo.thermalState.rawValue]
+                if let passed {r["passed"]=passed};if let error {r["error"]=error};CameraRecordingQA.write(r)
+            }
+            save("Waiting for camera")
+            for _ in 0..<100 where !caps.hasCamera {try? await Task.sleep(for:.milliseconds(100))}
+            guard caps.hasCamera else {save("failed",false,"No camera");return}
+            dualShot=false;selectMode(.video);look = .standard;selectedLUT=nil;monitorLUT=false;flash = .off
+            focusPullLensEnabled=true
+            try? await Task.sleep(for:.seconds(2))
+            for zoom in [0.5,4.0,8.0,1.0,8.0,0.5,1.0] {
+                guard let lens=lenses.first(where:{abs($0.zoom-zoom)<0.15}) else {continue}
+                let enabled=canSelectLens(lens);selectLens(lens)
+                try? await Task.sleep(for:.milliseconds(1250))
+                let snapshot=await engine.reliabilitySnapshot()
+                let actual=snapshot["lens"] as? Double ?? -1
+                let passed=enabled && abs(actual-lens.zoom)<0.15 && !focusPullLensEnabled
+                lensResults.append(["zoom":lens.zoom,"enabled":enabled,"actual":actual,"focusLens":focusPullLensEnabled,"passed":passed])
+                guard passed else {save("failed",false,"Lens selection failed");return}
+            }
+            try? await Task.sleep(for:.seconds(1));codecTask?.cancel()
+            let codec=RecordingCodec(rawValue:AVVideoCodecType.hevc.rawValue)
+            let phases:[(LogProfile,Int,Bool,Double)]=[(.log,30,false,8),(.log,60,false,8),(.log2,30,false,12),(.log2,60,false,8),(.log2,30,true,60)]
+            for (profile,fps,monitor,seconds) in phases {
+                if profile == .log && !caps.supportsLog || profile == .log2 && !caps.supportsLog2 {continue}
+                guard ProcessInfo.processInfo.thermalState.rawValue<2 else {save("failed",false,"Phone needs cooling");return}
+                focusPullLensEnabled = profile == .log2 && fps == 30 && !monitor
+                try? await Task.sleep(for:.seconds(1))
+                logProfile=profile;codecTask?.cancel();selectedCodec=codec;showHistogram=monitor
+                if monitor,let lut=luts.first {selectedLUT=lut;monitorLUT=true} else {monitorLUT=false;selectedLUT=nil}
+                let settings=RecordingSettings(resolution:RecResolution(width:3840,height:2160),frameRate:fps,bitrate:.high)
+                engine.setPreview(video:true,log:profile,settings:settings,codec:codec)
+                engine.discoverRecordingCodecs(log:profile,dual:false,settings:settings,preferredCodec:codec)
+                try? await Task.sleep(for:.seconds(2));codecTask?.cancel()
+                await engine.resetReliabilityMovie();engine.setVideoCrop(nil,viewRatio:9.0/16)
+                engine.setRecordingGrade(cube:nil,size:0,intensity:1,style:.identity)
+                let label="\(profile.rawValue) \(fps)fps monitor=\(monitor)"
+                save("Starting "+label)
+                engine.startRecording(log:profile,dual:false,codec:codec,settings:settings,recordingID:UUID())
+                for _ in 0..<150 where !isRecording {try? await Task.sleep(for:.milliseconds(100))}
+                guard isRecording else {save("failed",false,"Could not start "+label);return}
+                engine.beginSingleCadenceProbe()
+                let start=ProcessInfo.processInfo.systemUptime;var thermalPeak=ProcessInfo.processInfo.thermalState.rawValue
+                var lensStep=0
+                while ProcessInfo.processInfo.systemUptime-start<seconds {
+                    if profile == .log && fps == 30 && !monitor, lensStep<3,
+                       ProcessInfo.processInfo.systemUptime-start>=Double(lensStep+1)*2,
+                       let lens=lenses.min(by:{abs($0.zoom-[8.0,0.5,1.0][lensStep])<abs($1.zoom-[8.0,0.5,1.0][lensStep])}) {
+                        let enabled=canSelectLens(lens)
+                        lensResults.append(["duringLogRecording":true,"zoom":lens.zoom,"enabled":enabled,"passed":enabled])
+                        guard enabled else {engine.stopRecording();save("failed",false,"Virtual Log lens disabled");return}
+                        selectLens(lens);lensStep+=1
+                    }
+                    guard UIApplication.shared.applicationState == .active else {engine.stopRecording();save("failed",false,"Camera left foreground");return}
+                    thermalPeak=max(thermalPeak,ProcessInfo.processInfo.thermalState.rawValue)
+                    save("Recording "+label)
+                    try? await Task.sleep(for:.seconds(1))
+                }
+                var snapshot=await engine.reliabilitySnapshot();snapshot["thermalPeak"]=thermalPeak
+                engine.endSingleCadenceProbe(label:label);engine.stopRecording()
+                for _ in 0..<200 where isRecording {try? await Task.sleep(for:.milliseconds(100))}
+                var file:[String:Any]?
+                for _ in 0..<100 {file=await engine.reliabilityMovieResult();if file != nil {break};try? await Task.sleep(for:.milliseconds(100))}
+                let measured=file?["measuredFPS"] as? Double ?? 0,gap=file?["maxGapAfter1sMs"] as? Double ?? 10000
+                let previewCount=snapshot["monitorFrames"] as? Int ?? 0
+                let previewGap=snapshot["monitorSteadyGapMs"] as? Double ?? 10000
+                let previewPassed = !monitor || (previewCount>=Int(seconds*20) && previewGap<150)
+                let expectedLog = profile == .log2 ? kCVImageBufferLogTransferFunction_AppleLog2 as String : kCVImageBufferLogTransferFunction_AppleLog as String
+                let logPreserved = file?["logTransfer"] as? String == expectedLog && (file?["bits"] as? Int ?? 0)>=10
+                let passed=file?["passed"] as? Bool == true && measured>=Double(fps)*0.95 && gap<=Double(2000)/Double(fps)+1 && previewPassed && logPreserved
+                results.append(["label":label,"passed":passed,"snapshot":snapshot,"file":file ?? [:]])
+                save("Finished "+label)
+                if !passed {save("failed",false,"Recorded frame cadence failed "+label);return}
+                try? await Task.sleep(for:.milliseconds(750))
+            }
+            save("complete",true)
         }
     }
 

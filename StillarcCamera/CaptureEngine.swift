@@ -2703,6 +2703,7 @@ nonisolated final class CaptureEngine: NSObject,
 
         if let device = videoDevice {
             let format = device.activeFormat
+            caps.usesVirtualCamera = device.isVirtualDevice
             caps.hasTorch = device.hasTorch && device.isTorchModeSupported(.on)
             caps.supportsManualFocus = device.isLockingFocusWithCustomLensPositionSupported
 
@@ -4676,6 +4677,26 @@ nonisolated final class CaptureEngine: NSObject,
     }
 
     #if DEBUG
+    private var reliabilityMovie:[String:Any]?
+    func reliabilityMovieResult() async -> [String:Any]? {
+        await withCheckedContinuation { c in queue.async { c.resume(returning:self.reliabilityMovie) } }
+    }
+    func resetReliabilityMovie() async {
+        await withCheckedContinuation { c in queue.async {self.reliabilityMovie=nil;c.resume()} }
+    }
+    func reliabilitySnapshot() async ->[String:Any] {
+        await withCheckedContinuation { c in queue.async {
+            self.monitorLock.lock()
+            let meter=self.previewProbeMeters.first,source=self.sourceProbeMeter.count
+            self.monitorLock.unlock()
+            let device=self.videoDevice
+            c.resume(returning:["running":self.session.isRunning,"virtual":device?.isVirtualDevice ?? false,
+                "lens":self.lensChoice?.zoom ?? self.lensZoom,"colorSpace":device?.activeColorSpace.rawValue ?? -1,
+                "fps":1/max(0.0001,device?.activeVideoMinFrameDuration.seconds ?? 1),
+                "sourceFrames":source,"monitorFrames":meter?.count ?? 0,"monitorSteadyGapMs":(meter?.steadyGap ?? 0)*1000,
+                "thermal":ProcessInfo.processInfo.thermalState.rawValue])
+        }}
+    }
     func beginSingleCadenceProbe() {
         monitorLock.lock()
         let now = ProcessInfo.processInfo.systemUptime
@@ -5134,7 +5155,9 @@ nonisolated final class CaptureEngine: NSObject,
             ]
         }
 
-        writerVideoOutput.alwaysDiscardsLateVideoFrames = false
+        // Bound capture latency if the hardware encoder stalls. Do not retain
+        // an unbounded queue of full-resolution 10-bit camera buffers.
+        writerVideoOutput.alwaysDiscardsLateVideoFrames = true
         writerVideoOutput.setSampleBufferDelegate(self, queue: writerQueue)
 
         guard session.canAddOutput(writerVideoOutput) else {
@@ -5666,23 +5689,19 @@ nonisolated final class CaptureEngine: NSObject,
         // pausing that stream would introduce a visible freeze ourselves.
         let sourceFormat = CVPixelBufferGetPixelFormatType(source)
 
-        let firstFrame = monitorSourceSize.w == 0
 
         if monitorSourceSize.w != sourceW
             || monitorSourceSize.h != sourceH
             || monitorSourceFormat != sourceFormat {
-            let formatChanged = monitorSourceFormat != sourceFormat
 
             monitorSourceSize = (sourceW, sourceH)
             monitorSourceFormat = sourceFormat
             monitorEdges = (0, 0, 0, 0)
             edgeHold = 0
 
-            // The camera needs a moment to settle after a change. The app
-            // shows the plain camera picture meanwhile, then the LUT again.
-            if firstFrame == false, videoDevice?.isVirtualDevice != true {
-                holdMonitor(formatChanged ? 0.12 : 0.08)
-            }
+            // A complete new-format sample is already safe to render.
+            // Holding it when Log switches from proxy to recording buffers
+            // inserts a visible freeze at the start of an otherwise live feed.
         }
 
         monitorLock.lock()
@@ -5808,6 +5827,11 @@ nonisolated final class CaptureEngine: NSObject,
             return
         }
 
+        let renderer = monitorLayer.sampleBufferRenderer
+        if renderer.status == .failed { renderer.flush() }
+        // Never spend GPU time drawing a frame the display will reject.
+        guard renderer.isReadyForMoreMediaData else { monitorNotReady += 1; return }
+
         // Dual/anamorphic branches own their destinations. Allocate this
         // single-preview buffer only after those paths have returned.
         if monitorPool == nil || monitorPoolSize.width != outW || monitorPoolSize.height != outH {
@@ -5829,7 +5853,7 @@ nonisolated final class CaptureEngine: NSObject,
         guard let pool = monitorPool else { return }
 
         var destination: CVPixelBuffer?
-        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &destination)
+        CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(nil, pool, [kCVPixelBufferPoolAllocationThresholdKey as String: 4] as CFDictionary, &destination)
 
         guard let destination else { return }
 
@@ -5888,7 +5912,6 @@ nonisolated final class CaptureEngine: NSObject,
         }
 
 
-        let renderer = monitorLayer.sampleBufferRenderer
 
         if renderer.status == .failed {
             renderer.flush()
@@ -5897,6 +5920,9 @@ nonisolated final class CaptureEngine: NSObject,
         if renderer.isReadyForMoreMediaData {
             renderer.enqueue(sample)
             monitorEnqueued += 1
+            #if DEBUG
+            noteProbeFrame(on: monitorLayer)
+            #endif
 
             monitorLock.lock()
             lastMonitorEnqueue = CFAbsoluteTimeGetCurrent()
@@ -6092,6 +6118,17 @@ nonisolated final class CaptureEngine: NSObject,
 
     private func emit(_ event: EngineEvent) {
         #if DEBUG
+        if case .movie(let primary, let secondary, _, _, _) = event,
+           ProcessInfo.processInfo.arguments.contains("--verify-camera-reliability") {
+            Task.detached(priority:.utility) { [weak self] in
+                var result:[String:Any]
+                do {result=try await CameraRecordingQA.inspect(primary)} catch {result=["passed":false,"error":error.localizedDescription]}
+                for url in [primary]+[secondary].compactMap({$0}) {try? FileManager.default.removeItem(at:url)}
+                let report=result
+                self?.queue.async { [weak self] in self?.reliabilityMovie=report }
+            }
+            return
+        }
         if case .movie(let primary, let secondary, _, _, _) = event,
            ProcessInfo.processInfo.arguments.contains("--verify-single-recording") {
             verifyTemporaryMovies([primary] + [secondary].compactMap { $0 })
@@ -6627,6 +6664,8 @@ nonisolated final class LogWriter: @unchecked Sendable {
         let transfer = extensions?[kCMFormatDescriptionExtension_TransferFunction as String] as? String
         let matrix = extensions?[kCMFormatDescriptionExtension_YCbCrMatrix as String] as? String
 
+        let logTransfer = extensions?[kCMFormatDescriptionExtension_LogTransferFunction as String] as? String
+            ?? (CVBufferCopyAttachment(buffer, kCVImageBufferLogTransferFunctionKey, nil) as? String)
         guard let newWriter = try? AVAssetWriter(outputURL: url, fileType: .mov) else {
             print("STILLARC WRITER: could not create the file at \(url.lastPathComponent).")
             return false
@@ -6635,6 +6674,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
         var compression: [String: Any] = [
             AVVideoAverageBitRateKey: bitrate,
             AVVideoExpectedSourceFrameRateKey: Int(fps.rounded()),
+            AVVideoAllowFrameReorderingKey: false,
             AVVideoMaxKeyFrameIntervalKey: max(1, Int(fps.rounded()))
         ]
 
@@ -6675,6 +6715,16 @@ nonisolated final class LogWriter: @unchecked Sendable {
             ]
         }
 
+        if #available(iOS 27.0, *) {
+            if logTransfer == kCVImageBufferLogTransferFunction_AppleLog2 as String {
+                settings[AVVideoColorPropertiesKey] = [AVVideoLogTransferFunctionKey:AVVideoLogTransferFunction_AppleLog2,
+                    AVVideoYCbCrMatrixKey:AVVideoYCbCrMatrix_ITU_R_2020]
+            } else if logTransfer == kCVImageBufferLogTransferFunction_AppleLog as String {
+                settings[AVVideoColorPropertiesKey] = [AVVideoLogTransferFunctionKey:AVVideoLogTransferFunction_AppleLog,
+                    AVVideoColorPrimariesKey:AVVideoColorPrimaries_ITU_R_2020,AVVideoYCbCrMatrixKey:AVVideoYCbCrMatrix_ITU_R_2020]
+            }
+        }
+
         if newWriter.canApply(outputSettings: settings, forMediaType: .video) == false {
             settings.removeValue(forKey: AVVideoColorPropertiesKey)
 
@@ -6691,7 +6741,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
             }
         }
 
-        let video = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+        let video = AVAssetWriterInput(mediaType: .video, outputSettings: settings, sourceFormatHint: description)
         video.expectsMediaDataInRealTime = true
 
         guard newWriter.canAdd(video) else {
@@ -6724,7 +6774,7 @@ nonisolated final class LogWriter: @unchecked Sendable {
         videoInput = video
         startTime = start
 
-        print("STILLARC WRITER: started \(width)x\(height) \(codec), source format \(sourceFormat), \(is422 ? "4:2:2" : "4:2:0"), transfer \(transfer ?? "untagged")")
+        print("STILLARC WRITER: started \(width)x\(height) \(codec), source format \(sourceFormat), \(is422 ? "4:2:2" : "4:2:0"), transfer \(logTransfer ?? transfer ?? "untagged")")
 
         return true
     }

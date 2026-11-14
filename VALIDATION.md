@@ -1,5 +1,9 @@
 # Stillarc Camera validation
 
+## 1.3.8 — lens access and Log latency
+
+Native repeated lens changes, live Log zoom, 4K 10-bit Log/Log 2 at 30/60 fps, a one-minute LUT-monitored recording and rapid-photo regression passed on the 17 Pro. See [recorded evidence and limits](Validation/1.3.8/README.md).
+
 ## 1.3.6 — final unified dark icon
 
 Release archive and Debug simulator builds passed. Default/light and dark 1024px app icons are byte-identical, as are their corresponding in-app branding copies. Tinted assets are matching grayscale derivatives. Opaque dimensions and Desktop/master equality passed. Ten marketing slides, the overview and four actual onboarding previews were refreshed and checked. Strict signature verification passed; release 1.3.6 (23) installed and launched on the iPhone 17 Pro. Capture code, preferences and installation identifiers are unchanged. This identity-only update adds no new capture or thermal-performance claim. [Asset checks](Validation/1.3.6/icon-assets.json).

@@ -1,0 +1,222 @@
+{
+  "lenses" : [
+    {
+      "actual" : 0.5,
+      "enabled" : true,
+      "focusLens" : false,
+      "passed" : true,
+      "zoom" : 0.5
+    },
+    {
+      "actual" : 4,
+      "enabled" : true,
+      "focusLens" : false,
+      "passed" : true,
+      "zoom" : 4
+    },
+    {
+      "actual" : 8,
+      "enabled" : true,
+      "focusLens" : false,
+      "passed" : true,
+      "zoom" : 8
+    },
+    {
+      "actual" : 1,
+      "enabled" : true,
+      "focusLens" : false,
+      "passed" : true,
+      "zoom" : 1
+    },
+    {
+      "actual" : 8,
+      "enabled" : true,
+      "focusLens" : false,
+      "passed" : true,
+      "zoom" : 8
+    },
+    {
+      "actual" : 0.5,
+      "enabled" : true,
+      "focusLens" : false,
+      "passed" : true,
+      "zoom" : 0.5
+    },
+    {
+      "actual" : 1,
+      "enabled" : true,
+      "focusLens" : false,
+      "passed" : true,
+      "zoom" : 1
+    },
+    {
+      "duringLogRecording" : true,
+      "enabled" : true,
+      "passed" : true,
+      "zoom" : 8
+    },
+    {
+      "duringLogRecording" : true,
+      "enabled" : true,
+      "passed" : true,
+      "zoom" : 0.5
+    },
+    {
+      "duringLogRecording" : true,
+      "enabled" : true,
+      "passed" : true,
+      "zoom" : 1
+    }
+  ],
+  "passed" : true,
+  "stage" : "complete",
+  "takes" : [
+    {
+      "file" : {
+        "bits" : 10,
+        "format" : "<CMVideoFormatDescription 0x10e80e970 [0x1fa3fdfb8]> {\n\tmediaType:'vide' \n\tmediaSubType:'hvc1' \n\tmediaSpecific: {\n\t\tcodecType: 'hvc1'\t\tdimensions: 3840 x 2160 \n\t} \n\textensions: {{\n    BitsPerComponent = 10;\n    CVFieldCount = 1;\n    CVImageBufferChromaLocationBottomField = Left;\n    CVImageBufferChromaLocationTopField = Left;\n    CVImageBufferColorPrimaries = \"ITU_R_2020\";\n    CVImageBufferYCbCrMatrix = \"ITU_R_2020\";\n    Depth = 24;\n    FormatName = HEVC;\n    FullRangeVideo = 0;\n    LogTransferFunction = \"com.apple.rec2020.apple-log\";\n    RevisionLevel = 0;\n    SampleDescriptionExtensionAtoms =     {\n        hvcC = {length = 107, bytes = 0x01040800 0000bd08 00000000 9cf000fc ... 074401c0 764c14c9 };\n    };\n    SpatialQuality = 512;\n    TemporalQuality = 512;\n    VerbatimSampleDescription = {length = 258, bytes = 0x00000102 68766331 00000000 00000001 ... 2d6c6f67 00000000 };\n    Version = 0;\n}}\n}",
+        "frames" : 250,
+        "height" : 2160,
+        "logTransfer" : "com.apple.rec2020.apple-log",
+        "maxGapAfter1sMs" : 35.000000000000142,
+        "measuredFPS" : 29.987956643918107,
+        "nominalFPS" : 29.988004684448242,
+        "passed" : true,
+        "span" : 8.3033333333333328,
+        "width" : 3840
+      },
+      "label" : "log 30fps monitor=false",
+      "passed" : true,
+      "snapshot" : {
+        "colorSpace" : 3,
+        "fps" : 30,
+        "lens" : 1,
+        "monitorFrames" : 0,
+        "monitorSteadyGapMs" : 0,
+        "running" : true,
+        "sourceFrames" : 248,
+        "thermal" : 0,
+        "thermalPeak" : 0,
+        "virtual" : true
+      }
+    },
+    {
+      "file" : {
+        "bits" : 10,
+        "format" : "<CMVideoFormatDescription 0x11685f4b0 [0x1fa3fdfb8]> {\n\tmediaType:'vide' \n\tmediaSubType:'hvc1' \n\tmediaSpecific: {\n\t\tcodecType: 'hvc1'\t\tdimensions: 3840 x 2160 \n\t} \n\textensions: {{\n    BitsPerComponent = 10;\n    CVFieldCount = 1;\n    CVImageBufferChromaLocationBottomField = Left;\n    CVImageBufferChromaLocationTopField = Left;\n    CVImageBufferColorPrimaries = \"ITU_R_2020\";\n    CVImageBufferYCbCrMatrix = \"ITU_R_2020\";\n    Depth = 24;\n    FormatName = HEVC;\n    FullRangeVideo = 0;\n    LogTransferFunction = \"com.apple.rec2020.apple-log\";\n    RevisionLevel = 0;\n    SampleDescriptionExtensionAtoms =     {\n        hvcC = {length = 107, bytes = 0x01240800 0000bd08 00000000 99f000fc ... 074401c0 764c14c9 };\n    };\n    SpatialQuality = 512;\n    TemporalQuality = 512;\n    VerbatimSampleDescription = {length = 258, bytes = 0x00000102 68766331 00000000 00000001 ... 2d6c6f67 00000000 };\n    Version = 0;\n}}\n}",
+        "frames" : 502,
+        "height" : 2160,
+        "logTransfer" : "com.apple.rec2020.apple-log",
+        "maxGapAfter1sMs" : 18.333333333333535,
+        "measuredFPS" : 59.976057462090978,
+        "nominalFPS" : 59.976104736328125,
+        "passed" : true,
+        "span" : 8.3533333333333335,
+        "width" : 3840
+      },
+      "label" : "log 60fps monitor=false",
+      "passed" : true,
+      "snapshot" : {
+        "colorSpace" : 3,
+        "fps" : 60,
+        "lens" : 1,
+        "monitorFrames" : 0,
+        "monitorSteadyGapMs" : 0,
+        "running" : true,
+        "sourceFrames" : 497,
+        "thermal" : 0,
+        "thermalPeak" : 0,
+        "virtual" : true
+      }
+    },
+    {
+      "file" : {
+        "bits" : 10,
+        "format" : "<CMVideoFormatDescription 0x116706f70 [0x1fa3fdfb8]> {\n\tmediaType:'vide' \n\tmediaSubType:'hvc1' \n\tmediaSpecific: {\n\t\tcodecType: 'hvc1'\t\tdimensions: 3840 x 2160 \n\t} \n\textensions: {{\n    BitsPerComponent = 10;\n    CVFieldCount = 1;\n    CVImageBufferChromaLocationBottomField = Left;\n    CVImageBufferChromaLocationTopField = Left;\n    CVImageBufferYCbCrMatrix = \"ITU_R_2020\";\n    Depth = 24;\n    FormatName = HEVC;\n    FullRangeVideo = 0;\n    LogTransferFunction = \"com.apple.apple-wide-gamut.apple-log\";\n    RevisionLevel = 0;\n    SampleDescriptionExtensionAtoms =     {\n        hvcC = {length = 107, bytes = 0x01040800 0000bd08 00000000 9cf000fc ... 074401c0 764c14c9 };\n    };\n    SpatialQuality = 512;\n    TemporalQuality = 512;\n    VerbatimSampleDescription = {length = 267, bytes = 0x0000010b 68766331 00000000 00000001 ... 2d6c6f67 00000000 };\n    Version = 0;\n}}\n}",
+        "frames" : 374,
+        "height" : 2160,
+        "logTransfer" : "com.apple.apple-wide-gamut.apple-log",
+        "maxGapAfter1sMs" : 33.333333333334991,
+        "measuredFPS" : 30,
+        "nominalFPS" : 30,
+        "passed" : true,
+        "span" : 12.433333333333334,
+        "width" : 3840
+      },
+      "label" : "log2 30fps monitor=false",
+      "passed" : true,
+      "snapshot" : {
+        "colorSpace" : 4,
+        "fps" : 30,
+        "lens" : 1,
+        "monitorFrames" : 0,
+        "monitorSteadyGapMs" : 0,
+        "running" : true,
+        "sourceFrames" : 371,
+        "thermal" : 0,
+        "thermalPeak" : 0,
+        "virtual" : false
+      }
+    },
+    {
+      "file" : {
+        "bits" : 10,
+        "format" : "<CMVideoFormatDescription 0x10e8701b0 [0x1fa3fdfb8]> {\n\tmediaType:'vide' \n\tmediaSubType:'hvc1' \n\tmediaSpecific: {\n\t\tcodecType: 'hvc1'\t\tdimensions: 3840 x 2160 \n\t} \n\textensions: {{\n    BitsPerComponent = 10;\n    CVFieldCount = 1;\n    CVImageBufferChromaLocationBottomField = Left;\n    CVImageBufferChromaLocationTopField = Left;\n    CVImageBufferYCbCrMatrix = \"ITU_R_2020\";\n    Depth = 24;\n    FormatName = HEVC;\n    FullRangeVideo = 0;\n    LogTransferFunction = \"com.apple.apple-wide-gamut.apple-log\";\n    RevisionLevel = 0;\n    SampleDescriptionExtensionAtoms =     {\n        hvcC = {length = 107, bytes = 0x01240800 0000bd08 00000000 99f000fc ... 074401c0 764c14c9 };\n    };\n    SpatialQuality = 512;\n    TemporalQuality = 512;\n    VerbatimSampleDescription = {length = 267, bytes = 0x0000010b 68766331 00000000 00000001 ... 2d6c6f67 00000000 };\n    Version = 0;\n}}\n}",
+        "frames" : 496,
+        "height" : 2160,
+        "logTransfer" : "com.apple.apple-wide-gamut.apple-log",
+        "maxGapAfter1sMs" : 18.333333333333535,
+        "measuredFPS" : 59.975767366720511,
+        "nominalFPS" : 59.975814819335938,
+        "passed" : true,
+        "span" : 8.2533333333333339,
+        "width" : 3840
+      },
+      "label" : "log2 60fps monitor=false",
+      "passed" : true,
+      "snapshot" : {
+        "colorSpace" : 4,
+        "fps" : 60,
+        "lens" : 1,
+        "monitorFrames" : 0,
+        "monitorSteadyGapMs" : 0,
+        "running" : true,
+        "sourceFrames" : 491,
+        "thermal" : 0,
+        "thermalPeak" : 0,
+        "virtual" : true
+      }
+    },
+    {
+      "file" : {
+        "bits" : 10,
+        "format" : "<CMVideoFormatDescription 0x117a45ad0 [0x1fa3fdfb8]> {\n\tmediaType:'vide' \n\tmediaSubType:'hvc1' \n\tmediaSpecific: {\n\t\tcodecType: 'hvc1'\t\tdimensions: 3840 x 2160 \n\t} \n\textensions: {{\n    BitsPerComponent = 10;\n    CVFieldCount = 1;\n    CVImageBufferChromaLocationBottomField = Left;\n    CVImageBufferChromaLocationTopField = Left;\n    CVImageBufferYCbCrMatrix = \"ITU_R_2020\";\n    Depth = 24;\n    FormatName = HEVC;\n    FullRangeVideo = 0;\n    LogTransferFunction = \"com.apple.apple-wide-gamut.apple-log\";\n    RevisionLevel = 0;\n    SampleDescriptionExtensionAtoms =     {\n        hvcC = {length = 107, bytes = 0x01040800 0000bd08 00000000 9cf000fc ... 074401c0 764c14c9 };\n    };\n    SpatialQuality = 512;\n    TemporalQuality = 512;\n    VerbatimSampleDescription = {length = 267, bytes = 0x0000010b 68766331 00000000 00000001 ... 2d6c6f67 00000000 };\n    Version = 0;\n}}\n}",
+        "frames" : 1812,
+        "height" : 2160,
+        "logTransfer" : "com.apple.apple-wide-gamut.apple-log",
+        "maxGapAfter1sMs" : 35.000000000003695,
+        "measuredFPS" : 29.992547406773578,
+        "nominalFPS" : 29.992551803588867,
+        "passed" : true,
+        "span" : 60.381666666666668,
+        "width" : 3840
+      },
+      "label" : "log2 30fps monitor=true",
+      "passed" : true,
+      "snapshot" : {
+        "colorSpace" : 4,
+        "fps" : 30,
+        "lens" : 1,
+        "monitorFrames" : 1806,
+        "monitorSteadyGapMs" : 59.696083306334913,
+        "running" : true,
+        "sourceFrames" : 1810,
+        "thermal" : 0,
+        "thermalPeak" : 0,
+        "virtual" : true
+      }
+    }
+  ],
+  "thermal" : 0,
+  "version" : "1.3.8"
+}
